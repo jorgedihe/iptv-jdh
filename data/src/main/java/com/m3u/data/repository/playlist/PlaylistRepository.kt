@@ -58,6 +58,11 @@ interface PlaylistRepository {
 
     fun observeAllCounts(): Flow<Map<Playlist, Int>>
 
+    /** Like [observeAllCounts] but also surfaces EPG playlists. Use only in
+     *  the Lists UI; everywhere else (Foryou, Player) should keep using
+     *  [observeAllCounts] so EPGs don't pollute the channel surfaces. */
+    fun observeAllCountsIncludingEpg(): Flow<Map<Playlist, Int>>
+
     suspend fun readEpisodesOrThrow(series: Channel): List<XtreamEpisodeInfo>
 
     suspend fun deleteEpgPlaylistAndProgrammes(epgUrl: String)

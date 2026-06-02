@@ -6,9 +6,20 @@ import android.graphics.Rect
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.VolumeDown
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
@@ -28,6 +39,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import androidx.media3.common.Player
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -435,6 +447,47 @@ private fun ChannelPlayer(
                     onAlignment(size, space)
                 }
         )
+
+        // Loading overlay — visible whenever ExoPlayer is buffering or idle,
+        // independent of the mask. Without this the user only sees a black
+        // screen during the first 5-10s of channel switching and has no idea
+        // whether the app is doing something or stuck. A central spinner +
+        // "Conectando…" label removes that ambiguity entirely.
+        val playState = playerState.playState
+        val isLoading = playState == Player.STATE_BUFFERING ||
+                playState == Player.STATE_IDLE
+        val hasError = playerState.playerError != null
+        if (isLoading && !hasError) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(
+                        color = Color.Black.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                    .padding(horizontal = 20.dp, vertical = 14.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(
+                        strokeWidth = 2.5.dp,
+                        color = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Text(
+                        text = when (playState) {
+                            Player.STATE_BUFFERING -> "Conectando…"
+                            else -> "Cargando…"
+                        },
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
         VerticalGestureArea(
             percent = currentBrightness,
             time = 0.65f,

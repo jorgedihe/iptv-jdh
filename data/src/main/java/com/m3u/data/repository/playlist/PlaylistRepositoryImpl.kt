@@ -543,6 +543,11 @@ internal class PlaylistRepositoryImpl @Inject constructor(
 
     override suspend fun onUpdatePlaylistUserAgent(url: String, userAgent: String?) = playlistDao.updateUserAgent(url, userAgent)
 
+    override fun observeAllCountsIncludingEpg(): Flow<Map<Playlist, Int>> =
+        playlistDao.observeAllCountsIncludingEpg()
+            .map { it.toMap() }
+            .catch { emit(emptyMap()) }
+
     override fun observeAllCounts(): Flow<Map<Playlist, Int>> = playlistDao.observeAllCounts()
             .map { it.toMap() }
             .catch { emit(emptyMap()) }

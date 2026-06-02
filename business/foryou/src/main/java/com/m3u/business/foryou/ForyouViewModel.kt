@@ -231,9 +231,14 @@ class ForyouViewModel @Inject constructor(
     }
 
     private fun groupProviders(all: List<Playlist>): List<Provider> {
-        val xtreamPlaylists = all.filter { runCatching {
-            XtreamInput.decodeFromPlaylistUrl(it.url)
-        }.isSuccess }
+        // EPG playlists must never reach the Foryou provider selector. They
+        // are a guide (XMLTV), not a channel source — surfacing them here
+        // would let users "pick" an EPG to watch, which produces nothing.
+        val xtreamPlaylists = all
+            .filter { it.source != com.m3u.data.database.model.DataSource.EPG }
+            .filter {
+                runCatching { XtreamInput.decodeFromPlaylistUrl(it.url) }.isSuccess
+            }
 
         val groups = xtreamPlaylists.groupBy { playlist ->
             val input = XtreamInput.decodeFromPlaylistUrl(playlist.url)

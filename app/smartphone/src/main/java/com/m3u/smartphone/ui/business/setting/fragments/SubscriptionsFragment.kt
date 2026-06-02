@@ -129,12 +129,21 @@ private fun MainContentImpl(
         ) + contentPadding,
         modifier = modifier
     ) {
+        // EPG removed from this selector: it's not a channel list, it's an
+        // add-on for an existing list. Adding EPGs lives in the Lists tab
+        // (dedicated "+ Añadir guía EPG" button) instead.
         item {
+            // Reset selection away from EPG if the user lands here with EPG
+            // still active from a previous version.
+            LaunchedEffect(Unit) {
+                if (properties.selectedState.value == DataSource.EPG) {
+                    properties.selectedState.value = DataSource.M3U
+                }
+            }
             DataSourceSelection(
                 selectedState = properties.selectedState,
                 supported = listOf(
                     DataSource.M3U,
-                    DataSource.EPG,
                     DataSource.Xtream
                 )
             )
@@ -143,10 +152,8 @@ private fun MainContentImpl(
         item {
             when (properties.selectedState.value) {
                 DataSource.M3U -> M3UInputContent()
-                DataSource.EPG -> EPGInputContent()
                 DataSource.Xtream -> XtreamInputContent()
-                DataSource.Emby -> {}
-                DataSource.Dropbox -> {}
+                else -> {} // EPG / Emby / Dropbox not exposed here
             }
         }
 

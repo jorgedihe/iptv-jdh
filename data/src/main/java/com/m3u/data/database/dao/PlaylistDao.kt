@@ -65,14 +65,30 @@ interface PlaylistDao {
     @Transaction
     @Query(
         """
-        SELECT playlists.*, COUNT(streams.id) AS count 
-        FROM playlists 
-        LEFT JOIN streams 
-        ON playlists.url = streams.playlist_url 
+        SELECT playlists.*, COUNT(streams.id) AS count
+        FROM playlists
+        LEFT JOIN streams
+        ON playlists.url = streams.playlist_url
         WHERE source != "epg" GROUP BY playlists.url
         """
     )
     fun observeAllCounts(): Flow<List<PlaylistWithCount>>
+
+    /** Same as [observeAllCounts] but also includes EPG playlists. The "Listas"
+     *  UI needs them so users can see and delete EPGs from a single place;
+     *  callers that should keep ignoring EPGs (Foryou, Player, etc.) should
+     *  keep using [observeAllCounts]. */
+    @Transaction
+    @Query(
+        """
+        SELECT playlists.*, COUNT(streams.id) AS count
+        FROM playlists
+        LEFT JOIN streams
+        ON playlists.url = streams.playlist_url
+        GROUP BY playlists.url
+        """
+    )
+    fun observeAllCountsIncludingEpg(): Flow<List<PlaylistWithCount>>
 
     @Transaction
     @Query("SELECT * FROM playlists WHERE url = :url ORDER BY title")

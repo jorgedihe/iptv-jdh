@@ -94,6 +94,16 @@ class SettingViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5_000L)
         )
 
+    /** Same as [playlistsWithCounts] but includes EPG playlists. Used by the
+     *  Lists tab so users can see (and delete) every saved EPG. */
+    val playlistsWithCountsIncludingEpg: StateFlow<Map<Playlist, Int>> = playlistRepository
+        .observeAllCountsIncludingEpg()
+        .stateIn(
+            scope = viewModelScope,
+            initialValue = emptyMap(),
+            started = SharingStarted.WhileSubscribed(5_000L)
+        )
+
     /** URLs of playlists whose SubscriptionWorker is currently running or queued. */
     val refreshingPlaylistUrls: StateFlow<Set<String>> = workManager
         .getWorkInfosFlow(
@@ -370,6 +380,67 @@ class SettingViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Add an EPG (XMLTV) playlist directly. Called from the Lists tab's
+     * "+ Añadir guía EPG" dialog. Validates that the URL is not already in
+     * use by an M3U / Xtream playlist (which would otherwise overwrite the
+     * existing list — see [PlaylistRepositoryImpl.insertEpgAsPlaylist]).
+     */
+    fun addEpg(title: String, epgUrl: String) {
+        val trimmedTitle = title.trim()
+        val trimmedUrl = epgUrl.trim()
+        if (trimmedTitle.isEmpty()) {
+            messager.emit(SettingMessage.EmptyEpgTitle)
+            return
+        }
+        if (trimmedUrl.isEmpty()) {
+            messager.emit(SettingMessage.EmptyEpg)
+            return
+        }
+        viewModelScope.launch {
+            runCatching { playlistRepository.insertEpgAsPlaylist(trimmedTitle, trimmedUrl) }
+                .onSuccess { messager.emit(SettingMessage.EpgAdded) }
+                .onFailure { e ->
+                    messager.emit(
+                        e.message ?: "No se pudo guardar el EPG: la URL ya está en uso."
+                    )
+                }
+        }
+    }
+
+    /**
+     * Attach (or detach if [epgUrl] is null) an EPG URL to a channel playlist.
+     * Used by the edit-list dialog so a list can be linked to one of the
+     * stored EPGs explicitly (Option A flow). One EPG per playlist for now;
+     * the underlying model supports multiple, but the UI exposes a single
+     * dropdown so we replace the whole list every time.
+     */
+    fun setPlaylistEpg(playlistUrl: String, epgUrl: String?) {
+        viewModelScope.launch {
+            val current = playlistRepository.get(playlistUrl) ?: return@launch
+            // Remove every existing EPG association first.
+            current.epgUrls.forEach { existing ->
+                playlistRepository.onUpdateEpgPlaylist(
+                    com.m3u.data.repository.playlist.PlaylistRepository.EpgPlaylistUseCase.Check(
+                        playlistUrl = playlistUrl,
+                        epgUrl = existing,
+                        action = false
+                    )
+                )
+            }
+            // Then add the new one, if any.
+            if (!epgUrl.isNullOrBlank()) {
+                playlistRepository.onUpdateEpgPlaylist(
+                    com.m3u.data.repository.playlist.PlaylistRepository.EpgPlaylistUseCase.Check(
+                        playlistUrl = playlistUrl,
+                        epgUrl = epgUrl,
+                        action = true
+                    )
+                )
+            }
+        }
+    }
+
     fun subscribe() {
         val title = properties.titleState.value
         val url = properties.urlState.value
@@ -424,29 +495,9 @@ class SettingViewModel @Inject constructor(
                 }
 
                 DataSource.EPG -> {
-                    if (title.isEmpty()) {
-                        messager.emit(SettingMessage.EmptyEpgTitle)
-                        return
-                    }
-                    if (epg.isEmpty()) {
-                        messager.emit(SettingMessage.EmptyEpg)
-                        return
-                    }
-                    viewModelScope.launch {
-                        // The repository now refuses to overwrite an existing
-                        // M3U/Xtream playlist that already lives at this URL.
-                        // Surface that as a Messager string so the user sees
-                        // why nothing happened, instead of silently losing
-                        // their list (the previous behaviour).
-                        runCatching { playlistRepository.insertEpgAsPlaylist(title, epg) }
-                            .onSuccess { messager.emit(SettingMessage.EpgAdded) }
-                            .onFailure { e ->
-                                messager.emit(
-                                    e.message
-                                        ?: "No se pudo guardar el EPG: la URL ya está en uso."
-                                )
-                            }
-                    }
+                    // The "EPG" option was removed from the Add-list selector.
+                    // Adding EPGs now happens via [addEpg] from the Lists tab.
+                    addEpg(title, epg)
                 }
 
                 DataSource.Xtream -> {

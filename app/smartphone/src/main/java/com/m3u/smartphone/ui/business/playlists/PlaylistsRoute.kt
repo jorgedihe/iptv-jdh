@@ -21,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.Delete
@@ -61,7 +62,11 @@ fun PlaylistsRoute(
     contentPadding: PaddingValues = PaddingValues(),
     viewModel: com.m3u.business.setting.SettingViewModel = hiltViewModel()
 ) {
-    val playlists by viewModel.playlistsWithCounts.collectAsStateWithLifecycle()
+    // Use the EPG-inclusive flow here — otherwise users can't see (or delete)
+    // the EPG playlists they added. The Foryou screen and the player keep
+    // using the non-EPG flow.
+    val playlists by viewModel.playlistsWithCountsIncludingEpg.collectAsStateWithLifecycle()
+    var showAddEpgDialog by remember { mutableStateOf(false) }
     val activeKey by viewModel.activeProviderKey.collectAsStateWithLifecycle()
     val refreshing by viewModel.refreshingPlaylistUrls.collectAsStateWithLifecycle()
     // Backup / Restore are one-tap actions now — the file lives in the system
@@ -271,19 +276,56 @@ fun PlaylistsRoute(
                         onRename = { viewModel.renamePlaylist(playlist.url, it) },
                         onReplaceXtream = { _, _, _, _ -> },
                         onRefresh = { viewModel.refreshPlaylist(playlist.url) },
-                        onDelete = { viewModel.deletePlaylist(playlist.url) }
+                        onDelete = { viewModel.deletePlaylist(playlist.url) },
+                        // Offer each non-Xtream list the chance to attach
+                        // one of the saved EPGs (or detach an existing one).
+                        epgPlaylists = epgEntries.map { (epg, _) -> epg.url to epg.title },
+                        currentEpgUrl = playlist.epgUrls.firstOrNull(),
+                        onSetEpg = { newEpg -> viewModel.setPlaylistEpg(playlist.url, newEpg) }
                     )
                 }
-                if (epgEntries.isNotEmpty()) {
-                    item(key = "epg-section-header") {
+                // EPG section is ALWAYS shown (even when empty) so users can
+                // discover the "+ Añadir guía EPG" entry. It's a separate
+                // entity from channel lists.
+                item(key = "epg-section-header") {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp, bottom = 4.dp, start = 4.dp, end = 4.dp)
+                    ) {
                         Text(
                             text = "GUÍAS EPG",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 16.dp, bottom = 4.dp, start = 4.dp)
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { showAddEpgDialog = true }) {
+                            Icon(
+                                Icons.Rounded.Add,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.size(4.dp))
+                            Text(
+                                text = "Añadir guía EPG",
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+                if (epgEntries.isEmpty()) {
+                    item(key = "epg-empty") {
+                        Text(
+                            text = "Aún no tienes guías EPG. Asóciale una guía a tu lista para ver " +
+                                    "qué programa está dando cada canal en directo.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 8.dp)
                         )
                     }
+                } else {
                     items(items = epgEntries, key = { "epg-" + it.first.url }) { (playlist, _) ->
                         EpgCard(
                             title = playlist.title,
@@ -298,6 +340,61 @@ fun PlaylistsRoute(
         }
     }
     } // close Scaffold content lambda
+
+    if (showAddEpgDialog) {
+        AddEpgDialog(
+            onDismiss = { showAddEpgDialog = false },
+            onConfirm = { title, url ->
+                viewModel.addEpg(title, url)
+                showAddEpgDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun AddEpgDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (title: String, url: String) -> Unit
+) {
+    var title by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Añadir guía EPG") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Una guía EPG (XMLTV) muestra qué programa están dando " +
+                            "ahora mismo los canales. Después podrás asociarla a tus " +
+                            "listas desde el botón «Editar».",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Nombre (p. ej. EPG España)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("URL del XMLTV") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(title, url) },
+                enabled = title.isNotBlank() && url.isNotBlank()
+            ) { Text("Añadir") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
 }
 
 @Composable
@@ -648,7 +745,10 @@ private fun PlaylistCard(
     onRename: (String) -> Unit,
     onReplaceXtream: (title: String, basicUrl: String, username: String, password: String) -> Unit,
     onRefresh: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    epgPlaylists: List<Pair<String, String>> = emptyList(),
+    currentEpgUrl: String? = null,
+    onSetEpg: (newEpgUrl: String?) -> Unit = {}
 ) {
     var editing by remember { mutableStateOf(false) }
     Surface(
@@ -749,7 +849,10 @@ private fun PlaylistCard(
             onReplaceXtream = onReplaceXtream,
             onMakeActive = onMakeActive,
             onDelete = onDelete,
-            onDismiss = { editing = false }
+            onDismiss = { editing = false },
+            epgPlaylists = epgPlaylists,
+            currentEpgUrl = currentEpgUrl,
+            onSetEpg = onSetEpg
         )
     }
 }
@@ -766,7 +869,13 @@ private fun EditPlaylistDialog(
     onReplaceXtream: (title: String, basicUrl: String, username: String, password: String) -> Unit,
     onMakeActive: () -> Unit,
     onDelete: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    // EPG association (only meaningful for non-Xtream lists; Xtream gets
+    // its EPG over its own API automatically). Pass empty list + null to
+    // hide the dropdown.
+    epgPlaylists: List<Pair<String, String>> = emptyList(), // (url, title)
+    currentEpgUrl: String? = null,
+    onSetEpg: (newEpgUrl: String?) -> Unit = {}
 ) {
     val isXtream = sourceLabel == "xtream"
     val currentXtream = remember(url) {
@@ -779,6 +888,8 @@ private fun EditPlaylistDialog(
     var newUsername by remember { mutableStateOf(currentXtream?.username.orEmpty()) }
     var newPassword by remember { mutableStateOf(currentXtream?.password.orEmpty()) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var selectedEpgUrl by remember(currentEpgUrl) { mutableStateOf(currentEpgUrl) }
+    var epgMenuExpanded by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -816,6 +927,59 @@ private fun EditPlaylistDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                // EPG dropdown — only for non-Xtream lists. Xtream already
+                // gets EPG via player_api.
+                if (!isXtream && epgPlaylists.isNotEmpty()) {
+                    Spacer(Modifier.size(16.dp))
+                    Text(
+                        text = "Guía EPG asociada",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.size(4.dp))
+                    Box {
+                        OutlinedTextField(
+                            value = epgPlaylists.firstOrNull { it.first == selectedEpgUrl }?.second
+                                ?: "Ninguna",
+                            onValueChange = {},
+                            readOnly = true,
+                            singleLine = true,
+                            label = { Text("Selecciona una guía") },
+                            trailingIcon = {
+                                IconButton(onClick = { epgMenuExpanded = !epgMenuExpanded }) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.ArrowDropDown,
+                                        contentDescription = null
+                                    )
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { epgMenuExpanded = true }
+                        )
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = epgMenuExpanded,
+                            onDismissRequest = { epgMenuExpanded = false }
+                        ) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Ninguna") },
+                                onClick = {
+                                    selectedEpgUrl = null
+                                    epgMenuExpanded = false
+                                }
+                            )
+                            epgPlaylists.forEach { (epgUrl, epgTitle) ->
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text(epgTitle) },
+                                    onClick = {
+                                        selectedEpgUrl = epgUrl
+                                        epgMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
                 Spacer(Modifier.size(12.dp))
                 if (canMakeActive && !isActive) {
                     TextButton(onClick = { onMakeActive(); onDismiss() }) {
@@ -851,6 +1015,10 @@ private fun EditPlaylistDialog(
                     onReplaceXtream(t, newBasicUrl.trim(), newUsername.trim(), newPassword)
                 } else if (t != currentTitle) {
                     onRename(t)
+                }
+                // Persist EPG association change for non-Xtream lists.
+                if (!isXtream && selectedEpgUrl != currentEpgUrl) {
+                    onSetEpg(selectedEpgUrl)
                 }
                 onDismiss()
             }) { Text("Guardar") }
