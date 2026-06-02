@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -62,7 +63,7 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 @Composable
-internal fun ChannelItem(
+fun ChannelItem(
     channel: Channel,
     recently: Boolean,
     zapping: Boolean,
@@ -108,7 +109,7 @@ internal fun ChannelItem(
     ) {
         when {
             !noPictureMode && isVodOrSeriesPlaylist -> {
-                Box(
+                Column(
                     modifier = Modifier
                         .combinedClickable(
                             onClick = onClick,
@@ -116,54 +117,67 @@ internal fun ChannelItem(
                         )
                         .then(modifier)
                 ) {
-                    SubcomposeAsyncImage(
-                        model = remember(cover) {
-                            ImageRequest.Builder(context)
-                                .data(cover)
-                                .size(Size.ORIGINAL)
-                                .build()
-                        },
-                        contentDescription = channel.title,
-                        contentScale = ContentScale.FillWidth,
-                        loading = {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(2f / 3f)
+                    ) {
+                        SubcomposeAsyncImage(
+                            model = remember(cover) {
+                                ImageRequest.Builder(context)
+                                    .data(cover)
+                                    .size(Size.ORIGINAL)
+                                    .crossfade(220)
+                                    .build()
+                            },
+                            contentDescription = channel.title,
+                            contentScale = ContentScale.Crop,
+                            loading = {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(2f / 3f)
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+                            },
+                            error = {
+                                Column(
+                                    verticalArrangement = Arrangement.Center,
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(2f / 3f)
+                                        .padding(spacing.medium)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.BrokenImage,
+                                        contentDescription = null,
+                                        tint = LocalContentColor.current.copy(0.45f)
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        if (favourite) {
                             Box(
-                                contentAlignment = Alignment.Center,
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(1f)
-                            ) {
-                                CircularProgressIndicator()
-                            }
-                        },
-                        error = {
-                            Column(
-                                verticalArrangement = Arrangement.SpaceAround,
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(3 / 4f)
-                                    .padding(spacing.medium)
-                            ) {
-                                Text(
-                                    text = channel.title,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Icon(
-                                    imageVector = Icons.Rounded.BrokenImage,
-                                    contentDescription = null
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    if (favourite) {
-                        Box(
-                            modifier = Modifier
-                                .padding(spacing.small)
-                                .align(Alignment.BottomEnd)
-                        ) { star() }
+                                    .padding(spacing.small)
+                                    .align(Alignment.BottomEnd)
+                            ) { star() }
+                        }
                     }
+                    Text(
+                        text = channel.title.trim(),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = spacing.small, vertical = spacing.extraSmall)
+                    )
                 }
             }
 

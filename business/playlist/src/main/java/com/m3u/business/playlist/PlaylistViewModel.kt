@@ -95,6 +95,7 @@ class PlaylistViewModel @Inject constructor(
     val playlistUrl: StateFlow<String> = savedStateHandle
         .getStateFlow(PlaylistNavigation.TYPE_URL, "")
 
+
     val playlist: StateFlow<Playlist?> = playlistUrl.flatMapLatest {
         playlistRepository.observe(it)
     }

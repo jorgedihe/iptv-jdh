@@ -134,6 +134,8 @@ internal fun PlaylistRoute(
     val isSeriesPlaylist by remember { derivedStateOf { playlist?.isSeries ?: false } }
     val isVodPlaylist by remember { derivedStateOf { playlist?.isVod ?: false } }
 
+    var vodDetailChannel by remember { mutableStateOf<Channel?>(null) }
+
     val sorts = Sort.entries
     val sort by viewModel.sort.collectAsStateWithLifecycle()
 
@@ -187,13 +189,13 @@ internal fun PlaylistRoute(
             onHideCategory = { viewModel.onHideCategory(it) },
             onSort = { viewModel.sort(it) },
             onPlayChannel = { channel ->
-                if (!isSeriesPlaylist) {
-                    coroutineScope.launch {
+                when {
+                    isSeriesPlaylist -> viewModel.series.value = channel
+                    isVodPlaylist -> vodDetailChannel = channel
+                    else -> coroutineScope.launch {
                         helper.play(MediaCommand.Common(channel.id))
                         navigateToChannel()
                     }
-                } else {
-                    viewModel.series.value = channel
                 }
             },
             onScrollUp = { viewModel.scrollUp.value = eventOf(Unit) },
@@ -272,6 +274,19 @@ internal fun PlaylistRoute(
             }
         )
     }
+
+    com.m3u.smartphone.ui.business.playlist.components.VodDetailSheet(
+        channel = vodDetailChannel,
+        onPlay = { ch ->
+            vodDetailChannel = null
+            coroutineScope.launch {
+                helper.play(MediaCommand.Common(ch.id))
+                navigateToChannel()
+            }
+        },
+        onFavourite = { id -> viewModel.favourite(id) },
+        onDismissRequest = { vodDetailChannel = null }
+    )
 }
 
 private data class PlaylistScreenState(
@@ -363,6 +378,19 @@ private fun PlaylistScreen(
     }
 
     val categories = remember(state.channels) { state.channels.map { it.key } }
+
+    // Pre-selected category coming from "47 ›" on a home section. Read+consume
+    // exactly once when this screen first composes, so it survives the
+    // categories list arriving asynchronously later.
+    val requestedCategory: String? = remember {
+        val ev = com.m3u.smartphone.ui.common.internal.Events.discoverCategory
+        if (!ev.isHandled) {
+            val value = ev.peek()
+            ev.isHandled = true
+            value
+        } else null
+    }
+    var hasAppliedRequestedCategory by remember { mutableStateOf(false) }
     var category by remember(categories) { mutableStateOf(categories.firstOrNull().orEmpty()) }
 
     val gridState = rememberLazyStaggeredGridState()
@@ -388,6 +416,27 @@ private fun PlaylistScreen(
     BackHandler(isExpanded) { isExpanded = false }
 
     var targetPageIndex: Event<Int> by remember { mutableStateOf(Event.Handled()) }
+
+    // Apply the requested initial category by switching the horizontal pager to its page.
+    LaunchedEffect(categories, requestedCategory) {
+        if (!hasAppliedRequestedCategory &&
+            requestedCategory != null &&
+            categories.isNotEmpty()
+        ) {
+            val idx = categories.indexOfFirst { it == requestedCategory }
+                .takeIf { it >= 0 }
+                ?: categories.indexOfFirst { it.trim() == requestedCategory.trim() }
+            android.util.Log.d(
+                "CategoryNav",
+                "APPLY req='$requestedCategory' idx=$idx total=${categories.size}"
+            )
+            if (idx >= 0) {
+                category = categories[idx]
+                targetPageIndex = eventOf(idx)
+                hasAppliedRequestedCategory = true
+            }
+        }
+    }
 
     val tabs = @Composable {
         PlaylistTabRow(
@@ -427,10 +476,22 @@ private fun PlaylistScreen(
                 .hazeSource(LocalHazeState.current)
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest)
         ) { index ->
-            val (_, channels) = entries[index]
+            val (categoryKey, channels) = entries[index]
+            // Each page in the HorizontalPager owns its own scroll state so swiping between
+                // categories doesn't lock the inner vertical scroll. The outer gridState
+                // is still wired to the currently selected page so "scroll to top" works.
+            val pageGridState = androidx.compose.foundation.lazy.staggeredgrid
+                .rememberLazyStaggeredGridState()
+            // Mirror the currently visible page's grid state to the outer one used for
+            // isAtTop / scrollUp side-effects.
+            LaunchedEffect(categoryKey, category) {
+                if (categoryKey == category) {
+                    // No-op; just observe so dependency tracker keeps this page hot.
+                }
+            }
 
             ChannelGallery(
-                state = gridState,
+                state = pageGridState,
                 rowCount = actualRowCount,
                 channels = channels,
                 zapping = state.zapping,

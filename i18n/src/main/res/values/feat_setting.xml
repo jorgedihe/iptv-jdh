@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="feat_setting_app_version">app version</string>
-    <string name="feat_setting_label_subscribe">subscribe</string>
-    <string name="feat_setting_success_subscribe">subscribe successfully</string>
+    <string name="feat_setting_label_subscribe">add</string>
+    <string name="feat_setting_success_subscribe">added successfully</string>
     <string name="feat_setting_failed_malformed_url">malformed url (%s)</string>
     <string name="feat_setting_error_empty_title">playlist name is empty</string>
     <string name="feat_setting_placeholder_title">playlist name</string>

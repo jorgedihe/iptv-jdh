@@ -2,6 +2,19 @@ package com.m3u.smartphone.ui.business.channel.components
 
 import android.annotation.SuppressLint
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.unit.sp
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -11,11 +24,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -85,7 +102,9 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 private enum class Zoom(val time: Float) {
-    DEFAULT(1f), ZOOM_1_5(1.5f), ZOOM_2(2f), ZOOM_5(5f)
+    // Default zoom bumped from 1f to 1.5f so each programme cell has enough
+    // vertical room for "hour + 2-line title" without overlapping the next one.
+    DEFAULT(1.5f), ZOOM_1_5(2f), ZOOM_2(3f), ZOOM_5(5f)
 }
 
 @Composable
@@ -95,216 +114,224 @@ internal fun ProgramGuide(
     range: ProgrammeRange,
     programmeReminderIds: List<Int>,
     modifier: Modifier = Modifier,
-    minaBoxState: MinaBoxState = rememberSaveableMinaBoxState(),
-    height: Float = 256f,
-    padding: Float = 16f,
-    currentTimelineHeight: Float = 48f,
-    scrollOffset: Int = -120,
+    @Suppress("UNUSED_PARAMETER") minaBoxState: MinaBoxState = rememberSaveableMinaBoxState(),
+    @Suppress("UNUSED_PARAMETER") height: Float = 256f,
+    @Suppress("UNUSED_PARAMETER") padding: Float = 16f,
+    @Suppress("UNUSED_PARAMETER") currentTimelineHeight: Float = 48f,
+    @Suppress("UNUSED_PARAMETER") scrollOffset: Int = -120,
     onProgrammePressed: (Programme) -> Unit
 ) {
-    val spacing = LocalSpacing.current
-
     val currentMilliseconds by produceCurrentMillisecondState()
     val coroutineScope = rememberCoroutineScope()
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val clockMode by preferenceOf(PreferencesKeys.CLOCK_MODE)
 
-    var zoom: Zoom by remember { mutableStateOf(Zoom.DEFAULT) }
-    val zoomGestureModifier = Modifier.pointerInput(Unit) {
-        detectTapGestures(
-            onDoubleTap = {
-                zoom = when (zoom) {
-                    Zoom.DEFAULT -> Zoom.ZOOM_1_5
-                    Zoom.ZOOM_1_5 -> Zoom.ZOOM_2
-                    Zoom.ZOOM_2 -> Zoom.ZOOM_5
-                    Zoom.ZOOM_5 -> Zoom.DEFAULT
-                }
-            }
-        )
-    }
-    val currentHeight: Float by animateFloatAsState(
-        targetValue = height * zoom.time,
-        label = "minabox-cell-height"
-    )
-
-    val currentTimelineOffset by remember(range.start) {
+    // Find the index of the programme currently airing so we can auto-scroll to it.
+    val currentIndex by remember(programmes.itemCount, currentMilliseconds) {
         derivedStateOf {
-            (currentMilliseconds - range.start).toFloat() / HOUR_LENGTH * currentHeight
+            (0 until programmes.itemCount)
+                .firstOrNull { i ->
+                    val p = programmes.peek(i) ?: return@firstOrNull false
+                    currentMilliseconds in p.start..p.end
+                } ?: -1
         }
     }
 
-    val animateToCurrentTimeline: suspend () -> Unit by rememberUpdatedState {
-        minaBoxState.animateTo(
-            0f,
-            currentTimelineOffset + scrollOffset
-        )
-    }
-
-    if (isPanelExpanded) {
-        LaunchedEffect(Unit) {
-            animateToCurrentTimeline()
+    LaunchedEffect(isPanelExpanded, currentIndex) {
+        if (isPanelExpanded && currentIndex >= 0) {
+            kotlinx.coroutines.delay(120)
+            // Scroll to the item just before the current one so the user sees
+            // the previous programme on top and the live programme in view.
+            val targetIndex = (currentIndex - 1).coerceAtLeast(0)
+            runCatching { listState.animateScrollToItem(targetIndex) }
         }
     }
 
-    @SuppressLint("UnusedBoxWithConstraintsScope")
-    BoxWithConstraints {
-        MinaBox(
-            state = minaBoxState,
-            scrollDirection = MinaBoxScrollDirection.VERTICAL,
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surfaceContainer)
-                .then(zoomGestureModifier)
-                .then(modifier)
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer).then(modifier)) {
+        androidx.compose.foundation.lazy.LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // clock
-            items(
-                count = ((range.end - range.start) / 1000 / 60 / 60).toInt(),
-                layoutInfo = { hour ->
-                    MinaBoxItem(
-                        x = 0f,
-                        y = currentHeight * hour + padding * 3,
-                        width = padding * 2,
-                        height = currentHeight
-                    )
-                }
-            ) {
-                Canvas(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    repeat(12) { index ->
-                        drawLine(
-                            Color.LightGray,
-                            Offset(0f, currentHeight / 12 * index),
-                            Offset(size.width, currentHeight / 12 * index)
-                        )
-                    }
-                }
-            }
-            // programmes
-            items(
-                count = programmes.itemCount,
-                layoutInfo = { index ->
-                    val programme = programmes[index]
-                    if (programme != null) {
-                        val start = programme.start
-                        val end = programme.end
-                        MinaBoxItem(
-                            x = padding,
-                            y = currentHeight * (start - range.start) / HOUR_LENGTH + padding * 3,
-                            width = (constraints.maxWidth - padding * 2)
-                                .coerceAtLeast(0f),
-                            height = (currentHeight * (end - start) / HOUR_LENGTH - padding)
-                                .coerceAtLeast(0f)
-                        )
-                    } else {
-                        MinaBoxItem(0f, 0f, 0f, 0f)
-                    }
-                }
-            ) { index ->
-                val programme = programmes[index]
-                if (programme != null) {
-                    ProgrammeCell(
-                        programme = programme,
-                        inReminder = programme.id in programmeReminderIds,
-                        onPressed = { onProgrammePressed(programme) }
-                    )
-                } else {
-                    // Placeholder
-                }
-            }
-
-            // current timeline
-            items(
-                count = 1,
-                layoutInfo = {
-                    MinaBoxItem(
-                        x = 0f,
-                        y = currentTimelineOffset + padding * 2,
-                        width = constraints.maxWidth.toFloat(),
-                        height = currentTimelineHeight
-                    )
-                }
-            ) {
-                CurrentTimelineCell(
-                    milliseconds = currentMilliseconds
+            items(count = programmes.itemCount) { idx ->
+                val programme = programmes[idx] ?: return@items
+                val isCurrent = currentMilliseconds in programme.start..programme.end
+                ProgrammeListRow(
+                    programme = programme,
+                    isCurrent = isCurrent,
+                    isInReminder = programme.id in programmeReminderIds,
+                    clockMode = clockMode,
+                    onClick = { onProgrammePressed(programme) }
                 )
             }
-
-            // current timeline background placeholder
-            items(count = 1, layoutInfo = {
-                MinaBoxItem(
-                    x = 0f,
-                    y = currentTimelineOffset + padding * 2,
-                    width = constraints.maxWidth.toFloat(),
-                    height = constraints.maxHeight.toFloat()
-                )
-            }) {}
         }
-        Controls(
-            animateToCurrentTimeline = {
-                coroutineScope.launch { animateToCurrentTimeline() }
+
+        SmallFloatingActionButton(
+            onClick = {
+                coroutineScope.launch {
+                    if (currentIndex >= 0) {
+                        runCatching { listState.animateScrollToItem(currentIndex) }
+                    } else {
+                        listState.animateScrollToItem(0)
+                    }
+                }
             },
+            elevation = FloatingActionButtonDefaults.elevation(
+                defaultElevation = 0.dp,
+                pressedElevation = 0.dp
+            ),
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = androidx.compose.ui.graphics.Color.White,
             modifier = Modifier
-                .padding(spacing.medium)
                 .align(Alignment.BottomEnd)
-        )
+                .padding(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.KeyboardDoubleArrowUp,
+                contentDescription = "Now"
+            )
+        }
     }
 }
 
 @Composable
-@Suppress("Unused")
-private fun TimelineCell(
-    startEdge: Long,
-    index: Int,
-    modifier: Modifier = Modifier,
-    color: Color = Color.Unspecified
+private fun ProgrammeListRow(
+    programme: Programme,
+    isCurrent: Boolean,
+    isInReminder: Boolean,
+    clockMode: Boolean,
+    onClick: () -> Unit
 ) {
-    val contentColor = color.takeOrElse { LocalContentColor.current }
-    Canvas(modifier.fillMaxSize()) {
-        val currentHeight = size.height
-        val start = Instant.fromEpochMilliseconds(
-            startEdge + index * HOUR_LENGTH
-        )
-            .toLocalDateTime(TimeZone.currentSystemDefault())
-            .toEOrSh()
-        val end = Instant.fromEpochMilliseconds(
-            startEdge + (index + 1) * HOUR_LENGTH
-        )
-            .toLocalDateTime(TimeZone.currentSystemDefault())
-            .toEOrSh()
-            // cross midnight
-            .let { if (it < start) it + 24 else it }
+    val primary = MaterialTheme.colorScheme.primary
+    val container = when {
+        isCurrent -> MaterialTheme.colorScheme.primaryContainer
+        isInReminder -> MaterialTheme.colorScheme.tertiaryContainer
+        else -> MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+    val onContainer = when {
+        isCurrent -> MaterialTheme.colorScheme.onPrimaryContainer
+        isInReminder -> MaterialTheme.colorScheme.onTertiaryContainer
+        else -> MaterialTheme.colorScheme.onSurface
+    }
 
-        repeat(1) { index ->
-            val currentTimeline = start + (end - start) / 12 * index
-            if ((currentTimeline - currentTimeline).absoluteValue < HOUR_LENGTH / 12) {
-                drawLine(
-                    color = contentColor,
-                    start = Offset(
-                        0f,
-                        currentHeight * (currentTimeline - start)
-                    ),
-                    end = Offset(
-                        size.width,
-                        currentHeight * (currentTimeline - start)
-                    ),
-                    strokeWidth = 2f
+    // Pulsing live dot.
+    val infiniteTransition = rememberInfiniteTransition(label = "live-dot")
+    val livePulse by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "live-dot-alpha"
+    )
+
+    Surface(
+        color = container,
+        contentColor = onContainer,
+        shape = AbsoluteRoundedCornerShape(12.dp),
+        border = if (isCurrent) androidx.compose.foundation.BorderStroke(2.dp, primary) else null,
+        shadowElevation = if (isCurrent) 4.dp else 0.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                detectTapGestures(onLongPress = { onClick() })
+            }
+    ) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            // Side accent bar (visible only when current)
+            if (isCurrent) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(4.dp)
+                        .background(primary)
                 )
-            } else {
-                drawLine(
-                    color = contentColor,
-                    start = Offset(
-                        size.width / 3f,
-                        currentHeight * (currentTimeline - start)
-                    ),
-                    end = Offset(
-                        size.width,
-                        currentHeight * (currentTimeline - start)
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                val start = Instant.fromEpochMilliseconds(programme.start)
+                    .toLocalDateTime(TimeZone.currentSystemDefault())
+                    .toEOrSh()
+                val end = Instant.fromEpochMilliseconds(programme.end)
+                    .toLocalDateTime(TimeZone.currentSystemDefault())
+                    .toEOrSh()
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${start.formatEOrSh(clockMode)} – ${end.formatEOrSh(clockMode)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = LocalContentColor.current.copy(if (isCurrent) 0.95f else 0.7f)
                     )
+                    if (isCurrent) {
+                        Spacer(Modifier.padding(start = 10.dp))
+                        // Pulsing red dot
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    androidx.compose.ui.graphics.Color(0xFFFF4444)
+                                        .copy(alpha = livePulse)
+                                )
+                        )
+                        Spacer(Modifier.padding(start = 5.dp))
+                        Text(
+                            text = "EN DIRECTO",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            ),
+                            color = primary
+                        )
+                    }
+                }
+                Text(
+                    text = programme.title,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = if (isCurrent) androidx.compose.ui.text.font.FontWeight.Bold
+                        else androidx.compose.ui.text.font.FontWeight.SemiBold
+                    ),
+                    modifier = Modifier.padding(top = 3.dp)
                 )
+                if (programme.description.isNotBlank()) {
+                    Text(
+                        text = programme.description,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = LocalContentColor.current.copy(0.75f),
+                        modifier = Modifier.padding(top = 3.dp)
+                    )
+                }
+                if (isCurrent) {
+                    val now = remember(programme.start) { kotlin.time.Clock.System.now().toEpochMilliseconds() }
+                    val totalMs = (programme.end - programme.start).coerceAtLeast(1L)
+                    val elapsedMs = (now - programme.start).coerceIn(0L, totalMs)
+                    val progress = elapsedMs.toFloat() / totalMs.toFloat()
+                    Spacer(Modifier.padding(top = 8.dp))
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        color = primary,
+                        trackColor = primary.copy(alpha = 0.2f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                    )
+                }
             }
         }
     }
 }
+
 
 @Composable
 private fun ProgrammeCell(
@@ -318,11 +345,15 @@ private fun ProgrammeCell(
     val clockMode by preferenceOf(PreferencesKeys.CLOCK_MODE)
 
     val content = @Composable {
+        // Use ClippingColumn so contents never overflow the cell box. The cell height
+        // is computed by the timeline based on programme duration; short programmes
+        // can't show much, so we only render time + title (truncated).
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(4.dp),
-            verticalArrangement = Arrangement.spacedBy(spacing.small),
+                .clipToBounds()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             val start = Instant.fromEpochMilliseconds(programme.start)
                 .toLocalDateTime(TimeZone.currentSystemDefault())
@@ -334,22 +365,17 @@ private fun ProgrammeCell(
                 text = "${start.formatEOrSh(clockMode)} - ${end.formatEOrSh(clockMode)}",
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium,
-                color = LocalContentColor.current.copy(0.65f),
-                fontFamily = FontFamilies.LexendExa
+                style = MaterialTheme.typography.labelSmall,
+                color = LocalContentColor.current.copy(0.7f)
             )
             Text(
                 text = programme.title,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.titleMedium,
-                fontFamily = FontFamilies.LexendExa
-            )
-            Text(
-                text = programme.description,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium,
-                fontFamily = FontFamilies.LexendExa
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                ),
+                softWrap = true
             )
         }
     }

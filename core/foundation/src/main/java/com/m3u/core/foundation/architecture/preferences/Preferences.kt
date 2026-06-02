@@ -18,6 +18,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
@@ -124,7 +125,9 @@ private val PREFERENCES: Map<Preferences.Key<*>, *> = listOf(
     PreferencesKeys.SLIDER to true,
     PreferencesKeys.ALWAYS_SHOW_REPLAY to false,
     PreferencesKeys.PLAYER_PANEL to true,
-    PreferencesKeys.COMPACT_DIMENSION to false
+    PreferencesKeys.COMPACT_DIMENSION to false,
+    PreferencesKeys.ACTIVE_PROVIDER_KEY to "",
+    PreferencesKeys.HOME_VIEW_MODE to 0
 )
     .associateBy { it.key }
     .mapValues { it.value.value }
@@ -174,4 +177,13 @@ object PreferencesKeys {
     val PLAYER_PANEL = booleanPreferencesKey("player_panel")
 
     val COMPACT_DIMENSION = booleanPreferencesKey("compact-dimension")
+
+    /**
+     * Identifier of the currently active IPTV provider (basicUrl+username).
+     * Empty when no provider is selected yet.
+     */
+    val ACTIVE_PROVIDER_KEY = stringPreferencesKey("active-provider-key")
+
+    /** Home view mode: 0=Compact, 1=Comfortable, 2=Large, 3=Text-only. */
+    val HOME_VIEW_MODE = intPreferencesKey("home-view-mode")
 }

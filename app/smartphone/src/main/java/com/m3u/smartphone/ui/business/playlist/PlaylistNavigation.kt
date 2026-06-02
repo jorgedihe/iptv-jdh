@@ -20,6 +20,11 @@ fun NavGraphBuilder.playlistScreen(
         arguments = listOf(
             navArgument(PlaylistNavigation.TYPE_URL) {
                 type = NavType.StringType
+            },
+            navArgument(PlaylistNavigation.TYPE_CATEGORY) {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
             }
         ),
         enterTransition = { slideInVertically { it } },

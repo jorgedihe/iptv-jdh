@@ -15,11 +15,11 @@ android {
     namespace = "com.m3u.smartphone"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.m3u.smartphone"
+        applicationId = "net.jorgedihe.iptv"
         minSdk = 26
         targetSdk = 33
-        versionCode = 145
-        versionName = "1.15.1"
+        versionCode = 1
+        versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testInstrumentationRunnerArguments["m3uMockServerUrl"] = m3uMockServerUrl.get()
@@ -169,7 +169,7 @@ dependencies {
     // accompanist
     implementation(libs.google.accompanist.permissions)
     // performance
-    debugImplementation(libs.squareup.leakcanary)
+    // debugImplementation(libs.squareup.leakcanary) // removed: extra "Leaks" launcher icon
     // other
     implementation(libs.androidx.graphics.shapes)
     implementation(libs.androidx.constraintlayout.compose)

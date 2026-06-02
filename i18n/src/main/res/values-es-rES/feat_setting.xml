@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="feat_setting_app_version">versión de app</string>
-    <string name="feat_setting_label_subscribe">subscribirse</string>
-    <string name="feat_setting_success_subscribe">subscripción completada</string>
+    <string name="feat_setting_label_subscribe">añadir</string>
+    <string name="feat_setting_success_subscribe">añadido correctamente</string>
     <string name="feat_setting_failed_malformed_url">dirección mal formateada (%s)</string>
     <string name="feat_setting_error_empty_title">el nombre de la lista name está vacío</string>
     <string name="feat_setting_placeholder_title">nombre de lista</string>
     <string name="feat_setting_placeholder_url">enlace a lista</string>
-    <string name="feat_setting_label_subscribing">suscribiéndose</string>
+    <string name="feat_setting_label_subscribing">añadiendo</string>
     <string name="feat_setting_sync_mode_all">todo</string>
     <string name="feat_setting_sync_mode_keep">omitir favorito</string>
     <string name="feat_setting_sync_mode">forma de sincronizado</string>
@@ -65,8 +65,8 @@
     <string name="feat_setting_appearance_hint_edit_color">continúe pulsando para modificar el color</string>
     <string name="feat_setting_tunneling">modo tunelización</string>
     <string name="feat_setting_tunneling_description">mejora el rendimiento en contenido 4K/HDR</string>
-    <string name="feat_setting_label_backup">respaldar</string>
-    <string name="feat_setting_label_restore">restaurar</string>
+    <string name="feat_setting_label_backup">guardar copia</string>
+    <string name="feat_setting_label_restore">restaurar copia</string>
     <string name="feat_setting_canvas_dark">oscuro</string>
     <string name="feat_setting_canvas_light">claro</string>
     <string name="feat_setting_canvas_apply">aplicar</string>

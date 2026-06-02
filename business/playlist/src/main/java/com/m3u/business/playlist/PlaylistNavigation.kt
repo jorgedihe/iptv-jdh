@@ -8,20 +8,23 @@ const val PLAYLIST_ROUTE_PATH = "playlist_route"
 
 object PlaylistNavigation {
     const val TYPE_URL = "url"
+    const val TYPE_CATEGORY = "category"
 
     const val PLAYLIST_ROUTE =
-        "$PLAYLIST_ROUTE_PATH/{$TYPE_URL}"
+        "$PLAYLIST_ROUTE_PATH/{$TYPE_URL}?$TYPE_CATEGORY={$TYPE_CATEGORY}"
 
-    internal fun createPlaylistRoute(url: String): String {
-        return "$PLAYLIST_ROUTE_PATH/$url"
+    internal fun createPlaylistRoute(url: String, category: String?): String {
+        val base = "$PLAYLIST_ROUTE_PATH/$url"
+        return if (category.isNullOrEmpty()) base else "$base?$TYPE_CATEGORY=${Uri.encode(category)}"
     }
 }
 
 fun NavController.navigateToPlaylist(
     playlistUrl: String,
+    category: String? = null,
     navOptions: NavOptions? = null,
 ) {
     val encodedUrl = Uri.encode(playlistUrl)
-    val route = PlaylistNavigation.createPlaylistRoute(encodedUrl)
+    val route = PlaylistNavigation.createPlaylistRoute(encodedUrl, category)
     this.navigate(route, navOptions)
 }

@@ -112,7 +112,7 @@ internal fun PlaylistItem(
                     ) {
                         if (!refreshable) {
                             Badge(
-                                color = MaterialTheme.colorScheme.secondary,
+                                color = MaterialTheme.colorScheme.primary,
                                 shape = AbsoluteSmoothCornerShape(
                                     cornerRadiusTL = spacing.extraSmall,
                                     cornerRadiusTR = spacing.extraSmall,

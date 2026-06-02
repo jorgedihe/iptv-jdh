@@ -135,7 +135,9 @@ fun ChannelRoute(
     val useVertical = PullPanelLayoutDefaults.UseVertical
 
     val maskState = rememberMaskState()
-    val pullPanelLayoutState = rememberPullPanelLayoutState()
+    // Start with the info/EPG panel expanded so the user sees player + EPG split layout
+    // on launch. Tapping/swiping collapses it for fullscreen viewing.
+    val pullPanelLayoutState = rememberPullPanelLayoutState(fraction = 1f)
 
     val isPanelExpanded = pullPanelLayoutState.isExpanded
     val fraction = pullPanelLayoutState.fraction

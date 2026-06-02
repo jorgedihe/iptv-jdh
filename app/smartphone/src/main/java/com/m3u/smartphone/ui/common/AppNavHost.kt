@@ -32,7 +32,7 @@ fun AppNavHost(
     navigateToChannel: () -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(),
-    startDestination: String = Destination.Foryou.name
+    startDestination: String = Destination.Iptv.name
 ) {
     val context = LocalContext.current
 
@@ -48,6 +48,11 @@ fun AppNavHost(
         rootGraph(
             contentPadding = contentPadding,
             navigateToPlaylist = { playlist ->
+                navController.navigateToPlaylist(playlist.url)
+            },
+            navigateToPlaylistCategory = { playlist, category ->
+                com.m3u.smartphone.ui.common.internal.Events.discoverCategory =
+                    com.m3u.core.foundation.wrapper.eventOf(category)
                 navController.navigateToPlaylist(playlist.url)
             },
             navigateToChannel = navigateToChannel,

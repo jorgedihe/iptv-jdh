@@ -53,13 +53,5 @@ internal fun OtherPreferences(
             content = "$versionName ($versionCode)",
             icon = Icons.Rounded.Info,
         )
-        Preference(
-            title = stringResource(string.feat_setting_source_code).title(),
-            content = "@oxyroid/M3UAndroid",
-            icon = Icons.Rounded.Book,
-            onClick = {
-                uriHandler.openUri("https://github.com/oxyroid/M3UAndroid")
-            }
-        )
     }
 }

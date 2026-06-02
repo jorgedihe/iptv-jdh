@@ -24,6 +24,8 @@ import com.m3u.data.database.model.Channel
 import com.m3u.data.database.model.ColorScheme
 import com.m3u.data.database.model.DataSource
 import com.m3u.data.database.model.Playlist
+import com.m3u.data.database.model.isSeries
+import com.m3u.data.database.model.isVod
 import com.m3u.data.parser.xtream.XtreamInput
 import com.m3u.data.repository.channel.ChannelRepository
 import com.m3u.data.repository.playlist.PlaylistRepository
@@ -75,6 +77,168 @@ class SettingViewModel @Inject constructor(
             initialValue = emptyList(),
             started = SharingStarted.WhileSubscribed(5_000L)
         )
+
+    /** All playlists (live/vod/series of every provider) with channel counts. */
+    val playlistsWithCounts: StateFlow<Map<Playlist, Int>> = playlistRepository
+        .observeAllCounts()
+        .stateIn(
+            scope = viewModelScope,
+            initialValue = emptyMap(),
+            started = SharingStarted.WhileSubscribed(5_000L)
+        )
+
+    /** URLs of playlists whose SubscriptionWorker is currently running or queued. */
+    val refreshingPlaylistUrls: StateFlow<Set<String>> = workManager
+        .getWorkInfosFlow(
+            androidx.work.WorkQuery.fromStates(
+                androidx.work.WorkInfo.State.RUNNING,
+                androidx.work.WorkInfo.State.ENQUEUED
+            )
+        )
+        .combine(playlistRepository.observePlaylistUrls()) { infos, urls ->
+            val urlSet = urls.toSet()
+            infos
+                .filter { SubscriptionWorker.TAG in it.tags }
+                .flatMap { it.tags }
+                .filter { it in urlSet }
+                .toSet()
+        }
+        .stateIn(
+            scope = viewModelScope,
+            initialValue = emptySet(),
+            started = SharingStarted.WhileSubscribed(5_000L)
+        )
+
+    fun refreshPlaylist(url: String) {
+        viewModelScope.launch {
+            runCatching {
+                val playlist = playlistRepository.get(url) ?: return@runCatching
+                if (playlist.source == DataSource.Xtream) {
+                    val input = XtreamInput.decodeFromPlaylistUrl(playlist.url)
+                    // Refresh only the playlist the user pressed on (its own type).
+                    SubscriptionWorker.xtream(
+                        workManager = workManager,
+                        title = playlist.title,
+                        url = playlist.url,
+                        basicUrl = input.basicUrl,
+                        username = input.username,
+                        password = input.password
+                    )
+                    // If any sibling playlist (live / vod / series) for the same provider
+                    // is missing, create it now so the user gets the full catalogue.
+                    val providerKey = "${input.basicUrl}|${input.username}"
+                    val siblings = playlistRepository.getAll().filter { other ->
+                        if (other.source != DataSource.Xtream) return@filter false
+                        val otherInput = runCatching {
+                            XtreamInput.decodeFromPlaylistUrl(other.url)
+                        }.getOrNull() ?: return@filter false
+                        "${otherInput.basicUrl}|${otherInput.username}" == providerKey
+                    }
+                    val types = siblings.mapNotNull { other ->
+                        runCatching {
+                            XtreamInput.decodeFromPlaylistUrl(other.url).type
+                        }.getOrNull()
+                    }.toSet()
+                    val allTypes = listOf(
+                        XtreamInput.TYPE_LIVE,
+                        XtreamInput.TYPE_VOD,
+                        XtreamInput.TYPE_SERIES
+                    )
+                    allTypes.filterNot { it in types }.forEach { missingType ->
+                        val newUrl = XtreamInput.encodeToPlaylistUrl(
+                            XtreamInput(
+                                basicUrl = input.basicUrl,
+                                username = input.username,
+                                password = input.password,
+                                type = missingType
+                            )
+                        )
+                        SubscriptionWorker.xtream(
+                            workManager = workManager,
+                            title = playlist.title,
+                            url = newUrl,
+                            basicUrl = input.basicUrl,
+                            username = input.username,
+                            password = input.password
+                        )
+                    }
+                    // EPG download for the Live playlist.
+                    SubscriptionWorker.epg(
+                        workManager = workManager,
+                        playlistUrl = playlist.url,
+                        ignoreCache = true
+                    )
+                } else {
+                    playlistRepository.refresh(url)
+                }
+            }
+        }
+    }
+
+    /**
+     * Replace an existing Xtream playlist with a new one (URL/credentials change).
+     * Internally: unsubscribe the old one and enqueue a new xtream subscription.
+     * Title is kept as provided.
+     */
+    fun replaceXtreamPlaylist(
+        oldUrl: String,
+        title: String,
+        basicUrl: String,
+        username: String,
+        password: String
+    ) {
+        viewModelScope.launch {
+            runCatching { playlistRepository.unsubscribe(oldUrl) }
+            runCatching {
+                SubscriptionWorker.xtream(
+                    workManager = workManager,
+                    title = title,
+                    url = oldUrl, // url field is ignored by xtream worker; basicUrl/username/password are used
+                    basicUrl = basicUrl,
+                    username = username,
+                    password = password
+                )
+            }
+        }
+    }
+
+    fun deletePlaylist(url: String) {
+        viewModelScope.launch {
+            runCatching { playlistRepository.unsubscribe(url) }
+        }
+    }
+
+    fun renamePlaylist(url: String, title: String) {
+        viewModelScope.launch {
+            runCatching { playlistRepository.onUpdatePlaylistTitle(url, title) }
+        }
+    }
+
+    /** Currently active provider key (basicUrl|username), empty if none. */
+    val activeProviderKey: kotlinx.coroutines.flow.StateFlow<String> = settings
+        .flowOf(PreferencesKeys.ACTIVE_PROVIDER_KEY)
+        .stateIn(
+            scope = viewModelScope,
+            initialValue = "",
+            started = SharingStarted.WhileSubscribed(5_000L)
+        )
+
+    fun setActiveProviderByPlaylistUrl(url: String) {
+        viewModelScope.launch {
+            runCatching {
+                val input = XtreamInput.decodeFromPlaylistUrl(url)
+                val key = "${input.basicUrl}|${input.username}"
+                settings[PreferencesKeys.ACTIVE_PROVIDER_KEY] = key
+            }
+        }
+    }
+
+    private fun computeProviderKeyFromUrl(url: String): String? = runCatching {
+        val input = XtreamInput.decodeFromPlaylistUrl(url)
+        "${input.basicUrl}|${input.username}"
+    }.getOrNull()
+
+    fun providerKeyOf(url: String): String? = computeProviderKeyFromUrl(url)
 
     val hiddenChannels: StateFlow<List<Channel>> = channelRepository
         .observeAllHidden()

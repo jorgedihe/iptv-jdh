@@ -144,7 +144,7 @@ private fun AppImpl(
 
     NavigationSuiteScaffold(
         navigationSuiteItems = {
-            Destination.entries.forEach { destination ->
+            Destination.Tabs.forEach { destination ->
                 val isSelected = destination == currentDestination
                 item(
                     icon = {
@@ -161,7 +161,7 @@ private fun AppImpl(
                     },
                     selected = isSelected,
                     onClick = { navigateToDestination(destination) },
-                    alwaysShowLabel = false
+                    alwaysShowLabel = true
                 )
             }
         },
