@@ -31,12 +31,8 @@ internal fun RegularPreferences(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(spacing.small)
     ) {
-        Preference(
-            title = stringResource(string.feat_setting_playlist_management).title(),
-            icon = Icons.Rounded.MusicNote,
-            enabled = fragment != SettingDestination.Playlists,
-            onClick = navigateToPlaylistManagement
-        )
+        // "Administrar lista" removed from Settings: list management lives in the
+        // dedicated "Listas" tab now (with its own FAB to add new lists).
         Preference(
             title = stringResource(string.feat_setting_appearance).title(),
             icon = Icons.Rounded.ColorLens,

@@ -103,6 +103,7 @@ fun NavGraphBuilder.rootGraph(
         exitTransition = { fadeOut() }
     ) {
         com.m3u.smartphone.ui.business.playlists.PlaylistsRoute(
+            navigateToAddPlaylist = navigateToSettingPlaylistManagement,
             contentPadding = contentPadding,
             modifier = Modifier
                 .fillMaxSize()

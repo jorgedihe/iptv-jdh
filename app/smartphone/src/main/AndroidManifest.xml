@@ -12,10 +12,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    <!-- To view extension packages in API 30+ -->
-    <uses-permission
-        android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
+    <!-- QUERY_ALL_PACKAGES removed: Google Play sensitive permission.
+         Extension scanner returns an empty list on API 30+ without it, which is
+         the intended behavior for this distribution (no extensions shipped). -->
+
 
     <application
         android:name=".M3UApplication"

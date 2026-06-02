@@ -11,6 +11,7 @@ import android.graphics.drawable.Icon
 import androidx.hilt.work.HiltWorker
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
@@ -269,7 +270,8 @@ class SubscriptionWorker @AssistedInject constructor(
             title: String,
             url: String
         ) {
-            workManager.cancelAllWorkByTag(url)
+            // Use a unique-work namespace per type ("m3u#…", "epg#…", "xtream#…")
+            // so refreshes don't kill siblings that share the same URL tag.
             val request = OneTimeWorkRequestBuilder<SubscriptionWorker>()
                 .setInputData(
                     workDataOf(
@@ -288,7 +290,7 @@ class SubscriptionWorker @AssistedInject constructor(
                         .build()
                 )
                 .build()
-            workManager.enqueue(request)
+            workManager.enqueueUniqueWork("m3u#$url", ExistingWorkPolicy.REPLACE, request)
         }
 
         fun epg(
@@ -296,7 +298,10 @@ class SubscriptionWorker @AssistedInject constructor(
             playlistUrl: String,
             ignoreCache: Boolean
         ) {
-            workManager.cancelAllWorkByTag(playlistUrl)
+            // Don't cancelAllWorkByTag(playlistUrl): that tag is shared with the
+            // channel-download worker (xtream/m3u), and cancelling it kills the
+            // sibling that is still pulling Live/VOD/Series. Use a dedicated
+            // unique work name for EPG instead.
             val request = OneTimeWorkRequestBuilder<SubscriptionWorker>()
                 .setInputData(
                     workDataOf(
@@ -315,7 +320,11 @@ class SubscriptionWorker @AssistedInject constructor(
                         .build()
                 )
                 .build()
-            workManager.enqueue(request)
+            workManager.enqueueUniqueWork(
+                "epg#$playlistUrl",
+                ExistingWorkPolicy.REPLACE,
+                request
+            )
         }
 
         fun xtream(
@@ -326,8 +335,11 @@ class SubscriptionWorker @AssistedInject constructor(
             username: String,
             password: String,
         ) {
-            workManager.cancelAllWorkByTag(url)
-            workManager.cancelAllWorkByTag(basicUrl)
+            // Unique-work namespace "xtream#<url>" ensures:
+            // - Refreshing this exact playlist replaces a previous run (REPLACE).
+            // - Sibling playlists (Live/VOD/Series of the same provider) have
+            //   different URLs → different unique names → they don't kill each other.
+            // - The EPG worker uses "epg#…", so it can't kill the channel worker.
             val request = OneTimeWorkRequestBuilder<SubscriptionWorker>()
                 .setInputData(
                     workDataOf(
@@ -389,7 +401,11 @@ class SubscriptionWorker @AssistedInject constructor(
                         .build()
                 )
                 .build()
-            workManager.enqueue(request)
+            workManager.enqueueUniqueWork(
+                "xtream#$url",
+                ExistingWorkPolicy.REPLACE,
+                request
+            )
         }
 
         private val ATOMIC_NOTIFICATION_ID = AtomicInteger()
