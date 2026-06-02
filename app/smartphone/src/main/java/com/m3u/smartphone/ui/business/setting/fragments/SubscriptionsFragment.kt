@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -86,105 +88,45 @@ import com.m3u.smartphone.ui.material.ktx.checkPermissionOrRationale
 import com.m3u.smartphone.ui.material.ktx.textHorizontalLabel
 import com.m3u.smartphone.ui.material.model.LocalSpacing
 
-private enum class SubscriptionsFragmentPage {
-    MAIN, EPG_PLAYLISTS, HIDDEN_STREAMS, HIDDEN_PLAYLIST_CATEGORIES
-}
-
+// Previously this screen lived inside a HorizontalPager with hidden pages
+// ("emisiones ocultas", "categorías de listas ocultas", "EPGs"). They were
+// confusing because nothing on screen suggested swiping. The hidden pages
+// were dead weight in this user flow, so the screen is now a single page.
+// EPGs already have their own section in the "Listas" tab. Unhiding hidden
+// channels/categories is rare enough that it can live elsewhere in a future
+// version if needed.
 @Composable
 context(_: SettingProperties)
 internal fun SubscriptionsFragment(
-    backingUpOrRestoring: BackingUpAndRestoringState,
-    hiddenChannels: List<Channel>,
-    hiddenCategoriesWithPlaylists: List<Pair<Playlist, String>>,
-    onUnhideChannel: (Int) -> Unit,
-    onUnhidePlaylistCategory: (playlistUrl: String, category: String) -> Unit,
-    onClipboard: (String) -> Unit,
     onSubscribe: () -> Unit,
-    backup: () -> Unit,
-    restore: () -> Unit,
-    epgs: List<Playlist>,
-    onDeleteEpgPlaylist: (String) -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues()
 ) {
-    val spacing = LocalSpacing.current
-    val pagerState = rememberPagerState(initialPage = 0) { SubscriptionsFragmentPage.entries.size }
-
-    Box {
-        HorizontalPager(
-            state = pagerState,
-            verticalAlignment = Alignment.Top,
-            contentPadding = contentPadding,
-            modifier = modifier,
-            key = { SubscriptionsFragmentPage.entries[it] },
-            pageSize = PageSize.Fill,
-            pageSpacing = 1.dp
-        ) { page ->
-            when (SubscriptionsFragmentPage.entries[page]) {
-                SubscriptionsFragmentPage.MAIN -> {
-                    MainContentImpl(
-                        backingUpOrRestoring = backingUpOrRestoring,
-                        onClipboard = onClipboard,
-                        onSubscribe = onSubscribe,
-                        backup = backup,
-                        restore = restore,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                SubscriptionsFragmentPage.EPG_PLAYLISTS -> {
-                    EpgsContentImpl(
-                        epgs = epgs,
-                        onDeleteEpgPlaylist = onDeleteEpgPlaylist,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                SubscriptionsFragmentPage.HIDDEN_STREAMS -> {
-                    HiddenStreamContentImpl(
-                        hiddenChannels = hiddenChannels,
-                        onUnhideChannel = onUnhideChannel,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                SubscriptionsFragmentPage.HIDDEN_PLAYLIST_CATEGORIES -> {
-                    HiddenPlaylistCategoriesContentImpl(
-                        hiddenCategoriesWithPlaylists = hiddenCategoriesWithPlaylists,
-                        onUnhidePlaylistCategory = onUnhidePlaylistCategory,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-            }
-        }
-        HorizontalPagerIndicator(
-            pagerState = pagerState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(contentPadding)
-                .padding(spacing.medium)
-        )
-    }
+    MainContentImpl(
+        onSubscribe = onSubscribe,
+        modifier = modifier,
+        contentPadding = contentPadding
+    )
 }
 
 @Composable
 context(properties: SettingProperties)
 private fun MainContentImpl(
-    backingUpOrRestoring: BackingUpAndRestoringState,
-    onClipboard: (String) -> Unit,
     onSubscribe: () -> Unit,
-    backup: () -> Unit,
-    restore: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues()
 ) {
     val spacing = LocalSpacing.current
-    val clipboardManager = LocalClipboardManager.current
     val helper = LocalHelper.current
-    val remoteControl by preferenceOf(PreferencesKeys.REMOTE_CONTROL)
 
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(spacing.small),
-        contentPadding = PaddingValues(spacing.medium),
+        contentPadding = PaddingValues(
+            start = spacing.medium,
+            end = spacing.medium,
+            top = spacing.medium,
+            bottom = spacing.medium
+        ) + contentPadding,
         modifier = modifier
     ) {
         item {
@@ -212,91 +154,34 @@ private fun MainContentImpl(
             Spacer(Modifier.size(spacing.medium))
         }
         item {
-            if (properties.selectedState.value == DataSource.M3U) {
-                LocalStorageSwitch(
-                    checked = properties.localStorageState.value,
-                    onChanged = { properties.localStorageState.value = it },
-                    enabled = !properties.forTvState.value
-                )
-            }
-            if (remoteControl) {
-                RemoteControlSubscribeSwitch(
-                    checked = properties.forTvState.value,
-                    onChanged = { properties.forTvState.value = !properties.forTvState.value },
-                    enabled = !properties.localStorageState.value
-                )
-            }
-        }
-        item {
+            // Single-action screen now: one big "AÑADIR" button. The clipboard
+            // shortcut and the local-storage toggle were removed — users can
+            // paste manually if they want, and every list lives as a URL
+            // (which is what "Mis listas" already assumes).
             @SuppressLint("InlinedApi")
             val postNotificationPermission = rememberPermissionState(
                 Manifest.permission.POST_NOTIFICATIONS
             )
-            Column {
-                Row {
-                    Button(
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            postNotificationPermission.checkPermissionOrRationale(
-                                showRationale = {
-                                    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                                        .apply {
-                                            putExtra(
-                                                Settings.EXTRA_APP_PACKAGE,
-                                                helper.activityContext.packageName
-                                            )
-                                        }
-                                    helper.activityContext.startActivity(intent)
-                                },
-                                block = {
-                                    onSubscribe()
+            Button(
+                onClick = {
+                    postNotificationPermission.checkPermissionOrRationale(
+                        showRationale = {
+                            val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                .apply {
+                                    putExtra(
+                                        Settings.EXTRA_APP_PACKAGE,
+                                        helper.activityContext.packageName
+                                    )
                                 }
-                            )
-                        }
-                    ) {
-                        Text(stringResource(string.feat_setting_label_subscribe).uppercase())
-                    }
-                    when (properties.selectedState.value) {
-                        DataSource.M3U, DataSource.Xtream -> {
-                            IconButton(
-                                onClick = {
-                                    onClipboard(clipboardManager.getText()?.text.orEmpty())
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.ContentPaste,
-                                    contentDescription = null
-                                )
-                            }
-                        }
-
-                        else -> {}
-                    }
-                }
-                val backupText = stringResource(string.feat_setting_label_backup).uppercase()
-                val restoreText = stringResource(string.feat_setting_label_restore).uppercase()
-
-
-                TextButton(
-                    onClick = backup,
-                    enabled = backingUpOrRestoring == BackingUpAndRestoringState.NONE,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                ) {
-                    Text(
-                        text = backupText
+                            helper.activityContext.startActivity(intent)
+                        },
+                        block = { onSubscribe() }
                     )
-                }
-                TextButton(
-                    onClick = restore,
-                    enabled = backingUpOrRestoring == BackingUpAndRestoringState.NONE,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                ) {
-                    Text(
-                        text = restoreText
-                    )
-                }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(string.feat_setting_label_subscribe).uppercase())
             }
-
         }
 
         item {
@@ -304,6 +189,18 @@ private fun MainContentImpl(
         }
     }
 }
+
+// `+` operator for PaddingValues — simple add of all four edges, used above
+// so we don't accidentally drop the screen's contentPadding while applying
+// our own LazyColumn padding.
+private operator fun PaddingValues.plus(other: PaddingValues): PaddingValues = PaddingValues(
+    start = this.calculateStartPadding(androidx.compose.ui.unit.LayoutDirection.Ltr) +
+            other.calculateStartPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
+    end = this.calculateEndPadding(androidx.compose.ui.unit.LayoutDirection.Ltr) +
+            other.calculateEndPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
+    top = this.calculateTopPadding() + other.calculateTopPadding(),
+    bottom = this.calculateBottomPadding() + other.calculateBottomPadding()
+)
 
 @Composable
 private fun EpgsContentImpl(
@@ -386,6 +283,13 @@ private fun M3UInputContent(
     LaunchedEffect(Unit) {
         properties.applyBenchmarkPlaylistPrefill(DebugBenchmarkSettings.from(context))
     }
+    // localStorageState is forced to false from here so the rest of the
+    // subscribe pipeline keeps treating this as a URL-based list. The
+    // toggle that exposed the "save M3U file locally" path was removed
+    // because it confused most users — every list is now a URL.
+    LaunchedEffect(Unit) {
+        if (properties.localStorageState.value) properties.localStorageState.value = false
+    }
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(spacing.small)
@@ -397,24 +301,12 @@ private fun M3UInputContent(
             imeAction = ImeAction.Next,
             modifier = Modifier.fillMaxWidth()
         )
-        Crossfade(
-            targetState = properties.localStorageState.value,
-            label = "url"
-        ) { localStorage ->
-            if (!localStorage) {
-                PlaceholderField(
-                    text = properties.urlState.value,
-                    placeholder = stringResource(string.feat_setting_placeholder_url).uppercase(),
-                    onValueChange = { properties.urlState.value = Uri.decode(it) },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            } else {
-                LocalStorageButton(
-                    titleState = properties.titleState,
-                    uriState = properties.uriState,
-                )
-            }
-        }
+        PlaceholderField(
+            text = properties.urlState.value,
+            placeholder = stringResource(string.feat_setting_placeholder_url).uppercase(),
+            onValueChange = { properties.urlState.value = Uri.decode(it) },
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

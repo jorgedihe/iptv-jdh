@@ -21,10 +21,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
@@ -63,6 +64,9 @@ fun PlaylistsRoute(
     val playlists by viewModel.playlistsWithCounts.collectAsStateWithLifecycle()
     val activeKey by viewModel.activeProviderKey.collectAsStateWithLifecycle()
     val refreshing by viewModel.refreshingPlaylistUrls.collectAsStateWithLifecycle()
+    // Backup / Restore are one-tap actions now — the file lives in the system
+    // Downloads folder under a fixed name (IPTV-JDH-backup.txt). No file
+    // picker, no path selector, works the same on every Android phone.
 
     data class ProviderGroup(
         val key: String,
@@ -76,18 +80,19 @@ fun PlaylistsRoute(
         val totalChannels: Int
     )
 
-    val (xtreamGroups, otherEntries) = remember(playlists) {
+    val (xtreamGroups, otherEntries, epgEntries) = remember(playlists) {
         val xtream = mutableMapOf<String, MutableList<Pair<Playlist, Int>>>()
         val other = mutableListOf<Pair<Playlist, Int>>()
+        val epg = mutableListOf<Pair<Playlist, Int>>()
         playlists.entries.forEach { (playlist, count) ->
-            if (playlist.source == DataSource.Xtream) {
-                runCatching {
+            when (playlist.source) {
+                DataSource.Xtream -> runCatching {
                     val input = XtreamInput.decodeFromPlaylistUrl(playlist.url)
                     val key = "${input.basicUrl}|${input.username}"
                     xtream.getOrPut(key) { mutableListOf() }.add(playlist to count)
                 }.getOrNull() ?: other.add(playlist to count)
-            } else {
-                other.add(playlist to count)
+                DataSource.EPG -> epg.add(playlist to count)
+                else -> other.add(playlist to count)
             }
         }
         val groups = xtream.map { (key, items) ->
@@ -105,9 +110,13 @@ fun PlaylistsRoute(
                 totalChannels = items.sumOf { it.second }
             )
         }.sortedBy { it.displayName.lowercase() }
-        groups to other.sortedBy { it.first.title.lowercase() }
+        Triple(
+            groups,
+            other.sortedBy { it.first.title.lowercase() },
+            epg.sortedBy { it.first.title.lowercase() }
+        )
     }
-    val totalLists = xtreamGroups.size + otherEntries.size
+    val totalLists = xtreamGroups.size + otherEntries.size + epgEntries.size
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -139,20 +148,43 @@ fun PlaylistsRoute(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
             )
-            Text(
-                text = "$totalLists",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(end = 12.dp)
-            )
+            if (totalLists > 0) {
+                Text(
+                    text = "$totalLists",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(end = 4.dp)
+                )
+            }
+            // Backup is only meaningful once there is something to back up.
+            if (totalLists > 0) {
+                IconButton(onClick = { viewModel.backupToDownloads() }) {
+                    Icon(
+                        imageVector = Icons.Rounded.CloudUpload,
+                        contentDescription = "Guardar copia de seguridad",
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+            // Restore is always available — including for fresh installs.
+            IconButton(onClick = { viewModel.restoreFromDownloads() }) {
+                Icon(
+                    imageVector = Icons.Rounded.CloudDownload,
+                    contentDescription = "Restaurar copia de seguridad",
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
         }
 
         if (totalLists == 0) {
+            // FAB ya invita a añadir lista — el empty state es sólo texto, sin
+            // un segundo botón duplicado.
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(horizontal = 32.dp)
                 ) {
                     Text(
                         text = "Aún no tienes listas",
@@ -160,18 +192,10 @@ fun PlaylistsRoute(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Añade tu primera lista M3U o Xtream Codes",
+                        text = "Pulsa «+ Añadir lista» abajo para empezar",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Button(
-                        onClick = navigateToAddPlaylist,
-                        modifier = Modifier.padding(top = 8.dp)
-                    ) {
-                        Icon(Icons.Rounded.Add, contentDescription = null)
-                        Spacer(Modifier.size(8.dp))
-                        Text("Añadir lista")
-                    }
                 }
             }
         } else {
@@ -250,10 +274,91 @@ fun PlaylistsRoute(
                         onDelete = { viewModel.deletePlaylist(playlist.url) }
                     )
                 }
+                if (epgEntries.isNotEmpty()) {
+                    item(key = "epg-section-header") {
+                        Text(
+                            text = "GUÍAS EPG",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 16.dp, bottom = 4.dp, start = 4.dp)
+                        )
+                    }
+                    items(items = epgEntries, key = { "epg-" + it.first.url }) { (playlist, _) ->
+                        EpgCard(
+                            title = playlist.title,
+                            url = playlist.url,
+                            isRefreshing = playlist.url in refreshing,
+                            onRefresh = { viewModel.refreshPlaylist(playlist.url) },
+                            onDelete = { viewModel.deletePlaylist(playlist.url) }
+                        )
+                    }
+                }
             }
         }
     }
     } // close Scaffold content lambda
+}
+
+@Composable
+private fun EpgCard(
+    title: String,
+    url: String,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = title.ifBlank { "EPG sin título" },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (isRefreshing) "epg · descargando…" else "epg · guía de programación",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (isRefreshing) {
+                    Spacer(Modifier.size(6.dp))
+                    androidx.compose.material3.LinearProgressIndicator(
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                    )
+                }
+            }
+            IconButton(onClick = onRefresh, enabled = !isRefreshing) {
+                Icon(
+                    Icons.Rounded.Refresh,
+                    contentDescription = "Refrescar EPG",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            IconButton(onClick = onDelete) {
+                Icon(
+                    Icons.Rounded.Delete,
+                    contentDescription = "Eliminar EPG",
+                    tint = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+    }
 }
 
 // LazyColumn items() helper alias to keep this file self-contained.

@@ -341,7 +341,19 @@ internal class PlaylistRepositoryImpl @Inject constructor(
     }
 
     override suspend fun insertEpgAsPlaylist(title: String, epg: String) {
-        // just save epg playlist to db
+        // The playlists table uses `url` as its PRIMARY KEY, so naively calling
+        // insertOrReplace would silently overwrite an existing M3U or Xtream
+        // playlist that happens to live at the same URL — which is exactly what
+        // happens when somebody pastes the same iptv-org URL once as a channel
+        // list and a second time as an EPG. Refuse the conflict instead so the
+        // viewmodel can surface a clear error to the user.
+        val existing = playlistDao.get(epg)
+        if (existing != null && existing.source != DataSource.EPG) {
+            throw IllegalStateException(
+                "Esa URL ya está en uso por la lista «${existing.title}». " +
+                        "Bórrala primero si quieres reutilizar la misma URL como EPG."
+            )
+        }
         playlistDao.insertOrReplace(
             Playlist(
                 title = title,

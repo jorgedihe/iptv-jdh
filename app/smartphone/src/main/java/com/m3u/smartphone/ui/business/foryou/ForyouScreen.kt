@@ -291,19 +291,39 @@ private fun ForyouScreen(
         }
     }
 
-    val tabLabels = listOf(
-        stringResource(string.ui_tab_videos),
-        stringResource(string.ui_tab_series),
-        stringResource(string.ui_tab_live_tv)
-    )
-
     var viewModePref by mutablePreferenceOf(PreferencesKeys.HOME_VIEW_MODE)
     val viewMode = ViewMode.fromInt(viewModePref)
-    // Selected indices in tabLabels (UI order) map to data filter indices
-    // (0 = Live TV filter, 1 = Movies, 2 = Series). We render Movies first
-    // to match DiiXtream's visual order, but Live TV starts as default.
-    val uiToFilterIndex = listOf(1, 2, 0)
-    val displayTabIndex = uiToFilterIndex.indexOf(selectedTabIndex).coerceAtLeast(0)
+
+    // Build the tab strip dynamically: only show PELÍCULAS / SERIES when the
+    // active provider actually has those sub-playlists (Xtream has all three;
+    // a plain M3U provider has only Live, so showing the other two empty
+    // would be confusing).
+    //
+    // Each visible entry is (filterIndex, label). filterIndex maps to:
+    //   0 = Live TV   1 = Movies (VOD)   2 = Series
+    // Order matches DiiXtream: Movies, Series, Live TV (Live TV stays default).
+    val moviesLabel = stringResource(string.ui_tab_videos)
+    val seriesLabel = stringResource(string.ui_tab_series)
+    val liveLabel = stringResource(string.ui_tab_live_tv)
+    val visibleTabs: List<Pair<Int, String>> = remember(activeProvider) {
+        buildList {
+            if (activeProvider?.vod != null) add(1 to moviesLabel)
+            if (activeProvider?.series != null) add(2 to seriesLabel)
+            if (activeProvider?.live != null) add(0 to liveLabel)
+        }
+    }
+
+    // If the previously selected filter is no longer available (e.g. user
+    // switched from an Xtream provider to a plain M3U), reset to the first
+    // visible tab so the screen doesn't render an empty state silently.
+    LaunchedEffect(visibleTabs) {
+        if (visibleTabs.isNotEmpty() && visibleTabs.none { it.first == selectedTabIndex }) {
+            selectedTabIndex = visibleTabs.first().first
+        }
+    }
+
+    val displayTabIndex = visibleTabs.indexOfFirst { it.first == selectedTabIndex }
+        .coerceAtLeast(0)
 
     Box(modifier) {
         HeadlineBackground()
@@ -362,24 +382,28 @@ private fun ForyouScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
-                    PrimaryTabRow(
-                        selectedTabIndex = displayTabIndex,
-                        containerColor = Color.Transparent
-                    ) {
-                        tabLabels.forEachIndexed { uiIndex, label ->
-                            Tab(
-                                selected = displayTabIndex == uiIndex,
-                                onClick = { selectedTabIndex = uiToFilterIndex[uiIndex] },
-                                text = {
-                                    Text(
-                                        text = label.uppercase(),
-                                        style = MaterialTheme.typography.titleSmall,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Visible
-                                    )
-                                }
-                            )
+                    // Hide the tab strip entirely when there is only one section
+                    // available (e.g. a plain M3U provider with only Live TV).
+                    if (visibleTabs.size > 1) {
+                        PrimaryTabRow(
+                            selectedTabIndex = displayTabIndex,
+                            containerColor = Color.Transparent
+                        ) {
+                            visibleTabs.forEachIndexed { uiIndex, (filterIndex, label) ->
+                                Tab(
+                                    selected = displayTabIndex == uiIndex,
+                                    onClick = { selectedTabIndex = filterIndex },
+                                    text = {
+                                        Text(
+                                            text = label.uppercase(),
+                                            style = MaterialTheme.typography.titleSmall,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Visible
+                                        )
+                                    }
+                                )
+                            }
                         }
                     }
                 }

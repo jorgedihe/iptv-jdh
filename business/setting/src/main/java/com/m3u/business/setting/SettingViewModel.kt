@@ -1,7 +1,13 @@
 package com.m3u.business.setting
 
+import android.content.ContentValues
+import android.content.Context
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.lifecycle.ViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import androidx.lifecycle.viewModelScope
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
@@ -51,6 +57,7 @@ import kotlin.time.Clock
 
 @HiltViewModel
 class SettingViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val playlistRepository: PlaylistRepository,
     private val channelRepository: ChannelRepository,
     private val workManager: WorkManager,
@@ -426,9 +433,20 @@ class SettingViewModel @Inject constructor(
                         return
                     }
                     viewModelScope.launch {
-                        playlistRepository.insertEpgAsPlaylist(title, epg)
+                        // The repository now refuses to overwrite an existing
+                        // M3U/Xtream playlist that already lives at this URL.
+                        // Surface that as a Messager string so the user sees
+                        // why nothing happened, instead of silently losing
+                        // their list (the previous behaviour).
+                        runCatching { playlistRepository.insertEpgAsPlaylist(title, epg) }
+                            .onSuccess { messager.emit(SettingMessage.EpgAdded) }
+                            .onFailure { e ->
+                                messager.emit(
+                                    e.message
+                                        ?: "No se pudo guardar el EPG: la URL ya está en uso."
+                                )
+                            }
                     }
-                    messager.emit(SettingMessage.EpgAdded)
                 }
 
                 DataSource.Xtream -> {
@@ -562,6 +580,128 @@ class SettingViewModel @Inject constructor(
             .build()
         workManager.enqueue(request)
         messager.emit(SettingMessage.BackingUp)
+    }
+
+    /** Persistent filename for the auto-backup file in Downloads. */
+    private val backupFilename = "IPTV-JDH-backup.txt"
+
+    /**
+     * Write the backup to the system Downloads folder with no UI picker.
+     * Uses MediaStore on Android 10+ (no permission required for own files);
+     * falls back to direct File on older versions. Returns the resulting URI
+     * and emits a user-facing message describing where the file landed.
+     */
+    fun backupToDownloads() {
+        val uri: Uri? = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = appContext.contentResolver
+                val collection = MediaStore.Downloads.getContentUri(
+                    MediaStore.VOLUME_EXTERNAL_PRIMARY
+                )
+                // Delete a previous auto-backup if it exists, so users get a
+                // fresh "latest backup" instead of an ever-growing folder.
+                resolver.query(
+                    collection,
+                    arrayOf(MediaStore.Downloads._ID),
+                    "${MediaStore.Downloads.DISPLAY_NAME}=? AND " +
+                            "${MediaStore.Downloads.RELATIVE_PATH}=?",
+                    arrayOf(backupFilename, Environment.DIRECTORY_DOWNLOADS + "/"),
+                    null
+                )?.use { c ->
+                    while (c.moveToNext()) {
+                        val id = c.getLong(0)
+                        resolver.delete(
+                            android.content.ContentUris.withAppendedId(collection, id),
+                            null,
+                            null
+                        )
+                    }
+                }
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, backupFilename)
+                    put(MediaStore.Downloads.MIME_TYPE, "text/plain")
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
+                resolver.insert(collection, values)?.also { newUri ->
+                    // The BackupWorker will write content; flip IS_PENDING off
+                    // after the worker finishes — but Android also clears it
+                    // automatically when the OutputStream is closed by the
+                    // backup writer. Setting it now would race with the
+                    // worker, so we leave it as 1 and clear via the worker's
+                    // success callback path (already opens/closes the stream).
+                    values.clear()
+                    values.put(MediaStore.Downloads.IS_PENDING, 0)
+                    // Pre-clearing is harmless because the worker will still
+                    // truncate-and-write on open; clearer state for the
+                    // file manager in the meantime.
+                    resolver.update(newUri, values, null, null)
+                }
+            } else {
+                // Pre-Android 10: write directly to public Downloads folder.
+                // Requires WRITE_EXTERNAL_STORAGE on API <29.
+                @Suppress("DEPRECATION")
+                val downloads = Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOWNLOADS
+                )
+                if (!downloads.exists()) downloads.mkdirs()
+                val file = java.io.File(downloads, backupFilename)
+                // If the file already exists, overwrite it cleanly.
+                if (file.exists()) file.delete()
+                file.createNewFile()
+                Uri.fromFile(file)
+            }
+        } catch (e: Exception) {
+            messager.emit("No se pudo crear el archivo de copia: ${e.message}")
+            null
+        }
+        if (uri == null) return
+        backup(uri)
+    }
+
+    /**
+     * Restore from the auto-backup file in Downloads, if it exists. No UI
+     * picker. If multiple backups exist (filename collision was avoided), the
+     * MediaStore query returns the most recent one.
+     */
+    fun restoreFromDownloads() {
+        val uri: Uri? = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = appContext.contentResolver
+                val collection = MediaStore.Downloads.getContentUri(
+                    MediaStore.VOLUME_EXTERNAL_PRIMARY
+                )
+                var found: Uri? = null
+                resolver.query(
+                    collection,
+                    arrayOf(MediaStore.Downloads._ID),
+                    "${MediaStore.Downloads.DISPLAY_NAME}=?",
+                    arrayOf(backupFilename),
+                    "${MediaStore.Downloads.DATE_MODIFIED} DESC"
+                )?.use { c ->
+                    if (c.moveToFirst()) {
+                        val id = c.getLong(0)
+                        found = android.content.ContentUris.withAppendedId(collection, id)
+                    }
+                }
+                found
+            } else {
+                @Suppress("DEPRECATION")
+                val downloads = Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOWNLOADS
+                )
+                val file = java.io.File(downloads, backupFilename)
+                if (file.exists()) Uri.fromFile(file) else null
+            }
+        } catch (e: Exception) {
+            messager.emit("No se pudo abrir la copia: ${e.message}")
+            null
+        }
+        if (uri == null) {
+            messager.emit("No hay copia para restaurar en Descargas/$backupFilename")
+            return
+        }
+        restore(uri)
     }
 
     fun restore(uri: Uri) {

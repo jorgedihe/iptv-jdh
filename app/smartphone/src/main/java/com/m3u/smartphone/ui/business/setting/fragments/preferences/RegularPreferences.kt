@@ -45,13 +45,8 @@ internal fun RegularPreferences(
             enabled = fragment != SettingDestination.Optional,
             onClick = navigateToOptional
         )
-        if (codecPackEnabled) {
-            Preference(
-                title = stringResource(string.feat_setting_codec_pack).title(),
-                icon = Icons.Rounded.Download,
-                enabled = fragment != SettingDestination.CodecPack,
-                onClick = navigateToCodecPack
-            )
-        }
+        // "Decoder Components" entry removed — the codec pack is now
+        // installed automatically on first launch by M3UApplication.
+        // Users don't need to know it exists.
     }
 }

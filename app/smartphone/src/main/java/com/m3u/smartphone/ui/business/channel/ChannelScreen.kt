@@ -135,9 +135,17 @@ fun ChannelRoute(
     val useVertical = PullPanelLayoutDefaults.UseVertical
 
     val maskState = rememberMaskState()
-    // Start with the info/EPG panel expanded so the user sees player + EPG split layout
-    // on launch. Tapping/swiping collapses it for fullscreen viewing.
-    val pullPanelLayoutState = rememberPullPanelLayoutState(fraction = 1f)
+    // Start the info/EPG panel expanded in portrait (split layout: player + EPG below)
+    // but collapsed in landscape so the video takes the full screen — the panel just
+    // gets in the way when the phone is rotated to watch fullscreen.
+    val pullPanelLayoutState = rememberPullPanelLayoutState(
+        fraction = if (useVertical) 1f else 0f
+    )
+    // When the user rotates the phone, snap the panel to the right state for the new
+    // orientation: fullscreen video in landscape, split layout back in portrait.
+    LaunchedEffect(useVertical) {
+        if (useVertical) pullPanelLayoutState.expand() else pullPanelLayoutState.collapse()
+    }
 
     val isPanelExpanded = pullPanelLayoutState.isExpanded
     val fraction = pullPanelLayoutState.fraction

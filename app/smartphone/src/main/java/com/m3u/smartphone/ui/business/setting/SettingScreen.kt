@@ -67,6 +67,8 @@ fun SettingRoute(
     val hiddenCategoriesWithPlaylists by viewModel.hiddenCategoriesWithPlaylists.collectAsStateWithLifecycle()
     val backingUpOrRestoring by viewModel.backingUpOrRestoring.collectAsStateWithLifecycle()
     val codecPackState by viewModel.codecPackState.collectAsStateWithLifecycle()
+    val playlistCounts by viewModel.playlistsWithCounts.collectAsStateWithLifecycle()
+    val hasAnyPlaylist = playlistCounts.isNotEmpty()
 
     val sheetState = rememberModalBottomSheetState()
     var colorScheme: ColorScheme? by remember { mutableStateOf(null) }
@@ -101,6 +103,7 @@ fun SettingRoute(
             hiddenCategoriesWithPlaylists = hiddenCategoriesWithPlaylists,
             backup = backup,
             restore = restore,
+            hasAnyPlaylist = hasAnyPlaylist,
             colorSchemes = colorSchemes,
             openColorScheme = { colorScheme = it },
             restoreSchemes = viewModel::restoreSchemes,
@@ -148,6 +151,7 @@ private fun SettingScreen(
     onUnhidePlaylistCategory: (playlistUrl: String, group: String) -> Unit,
     backup: () -> Unit,
     restore: () -> Unit,
+    hasAnyPlaylist: Boolean,
     onClipboard: (String) -> Unit,
     colorSchemes: List<ColorScheme>,
     openColorScheme: (ColorScheme) -> Unit,
@@ -254,17 +258,7 @@ private fun SettingScreen(
             when (destination) {
                 SettingDestination.Playlists -> {
                     SubscriptionsFragment(
-                        backingUpOrRestoring = backingUpOrRestoring,
-                        hiddenChannels = hiddenChannels,
-                        hiddenCategoriesWithPlaylists = hiddenCategoriesWithPlaylists,
-                        onUnhideChannel = onUnhideChannel,
-                        onUnhidePlaylistCategory = onUnhidePlaylistCategory,
-                        onClipboard = onClipboard,
                         onSubscribe = onSubscribe,
-                        backup = backup,
-                        restore = restore,
-                        epgs = epgs,
-                        onDeleteEpgPlaylist = onDeleteEpgPlaylist,
                         contentPadding = contentPadding,
                         modifier = Modifier.fillMaxSize()
                     )
