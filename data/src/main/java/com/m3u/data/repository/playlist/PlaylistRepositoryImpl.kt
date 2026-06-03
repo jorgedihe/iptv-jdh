@@ -245,7 +245,20 @@ internal class PlaylistRepositoryImpl @Inject constructor(
                     channelDao.deleteByPlaylistUrlIgnoreFavOrHidden(livePlaylist.url)
                 }
             }
-            playlistDao.insertOrReplace(livePlaylist)
+            // Xtream Live playlists carry the XMLTV endpoint automatically
+            // (epgUrlsOrXtreamXmlUrl picks it up from the credentials), but
+            // the EPG worker only runs at next launch if the playlist is
+            // flagged autoRefreshProgrammes=true. Default it to true on
+            // first subscribe so the EPG actually downloads instead of the
+            // user having to dig into per-list config to enable it.
+            playlistDao.insertOrReplace(livePlaylist.copy(autoRefreshProgrammes = true))
+            // Trigger the EPG download right now too, so users see the
+            // guide without waiting for the next app launch.
+            SubscriptionWorker.epg(
+                workManager = workManager,
+                playlistUrl = livePlaylist.url,
+                ignoreCache = true
+            )
         }
         if (requiredVods) {
             when (playlistStrategy) {
