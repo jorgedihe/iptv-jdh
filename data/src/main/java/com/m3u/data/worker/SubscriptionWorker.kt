@@ -110,18 +110,24 @@ class SubscriptionWorker @AssistedInject constructor(
                 val playlistUrl = epgPlaylistUrl ?: return@coroutineScope Result.failure()
                 val ignoreCache = epgIgnoreCache
                 try {
+                    // BUG FIX: this used to do `.launchIn(this)` and return
+                    // Result.success() immediately. WorkManager then tore the
+                    // worker down (4 ms from Start to SUCCESS in logcat),
+                    // cancelling the orphaned coroutine — so the XMLTV download
+                    // never actually completed. Switching to .collect{} makes
+                    // the worker await the entire flow, which is exactly what
+                    // the foreground service is for in the first place.
                     programmeRepository.checkOrRefreshProgrammesOrThrow(
                         playlistUrl,
                         ignoreCache = ignoreCache
                     )
-                        .onEach { count ->
+                        .collect { count ->
                             val notification = createN10nBuilder()
                                 .setContentText(findProgrammeProgressContentText(count))
                                 .setActions(cancelAction)
                                 .build()
                             notificationManager.notify(notificationId, notification)
                         }
-                        .launchIn(this)
                     Result.success()
                 } catch (e: Exception) {
                     createN10nBuilder()
