@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.m3u.business.channel.EpisodeRow
 import com.m3u.business.channel.Person
 import com.m3u.business.channel.VodInfo
 
@@ -70,6 +71,8 @@ internal fun VodInfoPanel(
     isPlaying: Boolean,
     onPlayPause: () -> Unit,
     onToggleFavourite: () -> Unit,
+    episodes: List<EpisodeRow> = emptyList(),
+    onPlayEpisode: (EpisodeRow) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -279,7 +282,133 @@ internal fun VodInfoPanel(
             }
         }
 
+        // ─── Seasons + episodes (series only) ──────────────────────────────
+        if (episodes.isNotEmpty()) {
+            val grouped = episodes.groupBy { it.seasonNumber }.toSortedMap()
+            grouped.forEach { (seasonNumber, list) ->
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    androidx.compose.material3.Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    ) {
+                        Text(
+                            text = "SEASON$seasonNumber  ·  ${list.size} Episodios",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                        )
+                    }
+                    LazyRow(
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(list) { ep ->
+                            EpisodeCard(
+                                episode = ep,
+                                seriesCover = info.cover,
+                                seriesBackdrop = info.backdrop,
+                                onClick = { onPlayEpisode(ep) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun EpisodeCard(
+    episode: EpisodeRow,
+    seriesCover: String?,
+    seriesBackdrop: String?,
+    onClick: () -> Unit
+) {
+    val context = LocalContext.current
+    // Prefer the episode-specific still when we have it (TMDB enrichment),
+    // else fall back to the series backdrop / cover so the card is never
+    // empty. The aspect ratio matches DiiXtream's episode tiles.
+    val img = episode.stillUrl?.takeIf { it.isNotBlank() }
+        ?: seriesBackdrop?.takeIf { it.isNotBlank() }
+        ?: seriesCover
+    Column(
+        modifier = Modifier
+            .width(240.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+        ) {
+            if (!img.isNullOrBlank()) {
+                AsyncImage(
+                    model = remember(img) {
+                        ImageRequest.Builder(context).data(img).crossfade(180).build()
+                    },
+                    contentDescription = episode.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Rounded.Movie,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.35f),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+            // Top-right EP badge
+            Text(
+                text = "EP%02d".format(episode.episodeNumber),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
+            )
+        }
+        Text(
+            text = episode.title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        episode.duration?.takeIf { it.isNotBlank() }?.let { dur ->
+            Text(
+                text = dur,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        episode.overview?.takeIf { it.isNotBlank() }?.let { ov ->
+            Text(
+                text = ov,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

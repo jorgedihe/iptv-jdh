@@ -35,8 +35,10 @@ import androidx.compose.material3.TopSearchBar
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.material3.rememberSearchBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -76,6 +78,8 @@ fun App(
     AppImpl(
         navController = navController,
         channels = viewModel.channels,
+        searchQuery = viewModel.searchQuery.value,
+        onSearchQueryChange = { viewModel.searchQuery.value = it },
         isRemoteControlSheetVisible = viewModel.isConnectSheetVisible,
         remoteControlSheetValue = viewModel.remoteControlSheetValue,
         openRemoteControlSheet = { viewModel.isConnectSheetVisible = true },
@@ -95,6 +99,8 @@ fun App(
 private fun AppImpl(
     navController: NavHostController,
     channels: Flow<PagingData<ChannelWithProgramme>>,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
     isRemoteControlSheetVisible: Boolean,
     remoteControlSheetValue: RemoteControlSheetValue,
     openRemoteControlSheet: () -> Unit,
@@ -170,7 +176,15 @@ private fun AppImpl(
         Column {
             val coroutineScope = rememberCoroutineScope()
             val searchBarState = rememberSearchBarState()
-            val textFieldState = rememberTextFieldState()
+            val textFieldState = rememberTextFieldState(initialText = searchQuery)
+            // Connect the search input to the AppViewModel so the channel
+            // Pager flow actually receives the query. Without this the user
+            // could type all they wanted and the results pane stayed empty.
+            LaunchedEffect(textFieldState) {
+                snapshotFlow { textFieldState.text.toString() }.collect { typed ->
+                    if (typed != searchQuery) onSearchQueryChange(typed)
+                }
+            }
             val inputField = @Composable {
                 SearchBarDefaults.InputField(
                     searchBarState = searchBarState,

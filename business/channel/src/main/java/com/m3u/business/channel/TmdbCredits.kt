@@ -18,7 +18,7 @@ import okhttp3.Request
  * `TMDB_API_KEY` BuildConfig field of the host module; when it's blank we
  * skip the network call and the UI falls back to name initials.
  */
-internal object TmdbCredits {
+object TmdbCredits {
 
     private val http = OkHttpClient()
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -33,6 +33,47 @@ internal object TmdbCredits {
 
     suspend fun forSeries(tmdbId: String, apiKey: String): Pair<List<Person>, List<Person>>? =
         fetch("https://api.themoviedb.org/3/tv/$tmdbId/credits", apiKey)
+
+    /**
+     * Fetch per-episode metadata (still image + overview) for one season of a
+     * TV show. Returns a map keyed by 1-based episode number; the UI uses it
+     * to enrich the basic EpisodeRow list parsed out of Xtream.
+     */
+    suspend fun episodesForSeason(
+        tmdbId: String,
+        seasonNumber: Int,
+        apiKey: String
+    ): Map<Int, EpisodeMeta> = withContext(Dispatchers.IO) {
+        if (apiKey.isBlank()) return@withContext emptyMap()
+        runCatching {
+            val url = "https://api.themoviedb.org/3/tv/$tmdbId/season/$seasonNumber" +
+                    "?api_key=$apiKey&language=es-ES"
+            val request = Request.Builder().url(url).build()
+            http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@runCatching emptyMap<Int, EpisodeMeta>()
+                val root = json.parseToJsonElement(response.body.string()) as? JsonObject
+                    ?: return@runCatching emptyMap()
+                (root["episodes"] as? JsonArray).orEmpty()
+                    .mapNotNull { it as? JsonObject }
+                    .mapNotNull { obj ->
+                        val num = (obj["episode_number"] as? JsonPrimitive)
+                            ?.content?.toIntOrNull() ?: return@mapNotNull null
+                        num to EpisodeMeta(
+                            stillUrl = obj.string("still_path")?.let { "https://image.tmdb.org/t/p/w300$it" },
+                            overview = obj.string("overview"),
+                            tmdbName = obj.string("name"),
+                        )
+                    }
+                    .toMap()
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    data class EpisodeMeta(
+        val stillUrl: String? = null,
+        val overview: String? = null,
+        val tmdbName: String? = null,
+    )
 
     /** Returns (crew, cast) or null on any failure / no key. */
     private suspend fun fetch(baseUrl: String, apiKey: String): Pair<List<Person>, List<Person>>? =

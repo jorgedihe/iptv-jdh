@@ -6,7 +6,14 @@ import android.graphics.Rect
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateDpAsState
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -125,6 +132,7 @@ fun ChannelRoute(
     val volume by viewModel.volume.collectAsStateWithLifecycle()
     val isSeriesPlaylist by viewModel.isSeriesPlaylist.collectAsStateWithLifecycle(false)
     val vodInfo by viewModel.vodInfo.collectAsStateWithLifecycle()
+    val seriesEpisodes by viewModel.seriesEpisodes.collectAsStateWithLifecycle()
     val isProgrammeSupported by viewModel.isProgrammeSupported.collectAsStateWithLifecycle(
         initialValue = false
     )
@@ -168,15 +176,18 @@ fun ChannelRoute(
 
     // For movies and series the app no longer starts playback the instant the
     // user taps a tile in the list. Instead we open the player with the video
-    // PAUSED, expand the info panel so the user sees the synopsis / cast /
-    // favourite button first, and require them to tap the big "REPRODUCIR"
-    // button to actually start the stream. Mirrors DiiXtream's UX.
+    // STOPPED (no buffering, no half-loaded frame flashing on top), expand the
+    // info panel so the user sees the synopsis / cast / favourite button
+    // first, and require them to tap the big "REPRODUCIR" button to actually
+    // start the stream. Mirrors DiiXtream's UX.
     val isVodOrSeries = (playlist?.isVod == true) || isSeriesPlaylist
     var pendingVodAutoExpand by rememberSaveable(channel?.id) { mutableStateOf(true) }
     LaunchedEffect(isVodOrSeries, channel?.id, useVertical) {
         if (isVodOrSeries && useVertical && pendingVodAutoExpand) {
-            // Pause the player and surface the info panel on first entry.
-            playerState.player?.pause()
+            // Fully stop the player (not just pause) so the user doesn't see
+            // a "loading" spinner / first frame trying to render under the
+            // info sheet. play() in the REPRODUCIR button restores it.
+            playerState.player?.stop()
             pullPanelLayoutState.expand()
             pendingVodAutoExpand = false
         }
@@ -290,6 +301,51 @@ fun ChannelRoute(
         IntOffset(x.fastRoundToInt(), y.fastRoundToInt())
     }
 
+    // For VOD / series the user already saw the rich detail sheet BEFORE
+    // pressing play; this screen should be a pure full-screen video — no
+    // sliding panel, no info card peeking from the bottom. The "Conectando…"
+    // overlay added inside ChannelPlayer still shows while buffering.
+    if (isVodOrSeries) {
+        Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            ChannelPlayer(
+                isSeriesPlaylist = isSeriesPlaylist,
+                openDlnaDevices = { viewModel.openDlnaDevices() },
+                openChooseFormat = { choosing = true },
+                openOrClosePanel = { /* no panel here */ },
+                onFavorite = viewModel::onFavorite,
+                maskState = maskState,
+                playerState = playerState,
+                playlist = playlist,
+                channel = channel,
+                adjacentChannels = adjacentChannels,
+                hasTrack = tracks.isNotEmpty(),
+                isPanelExpanded = false,
+                brightness = brightness,
+                onBrightness = { brightness = it },
+                volume = volume,
+                onVolume = viewModel::onVolume,
+                brightnessGestureEnabled = brightnessGestureEnabled,
+                volumeGestureEnabled = volumeGestureEnabled,
+                speed = speed,
+                onSpeedUpdated = {
+                    viewModel.onSpeedUpdated(it)
+                    speed = it
+                },
+                cwPosition = viewModel.cwPosition,
+                onResetPlayback = viewModel::onResetPlayback,
+                onPreviousChannelClick = viewModel::getPreviousChannel,
+                onNextChannelClick = viewModel::getNextChannel,
+                onEnterPipMode = {
+                    helper.enterPipMode(playerState.videoSize)
+                    maskState.unlockAll()
+                },
+                onPaddingsChanged = onPaddingsChanged,
+                onAlignment = onAlignment,
+            )
+        }
+        return
+    }
+
     PullPanelLayout(
         state = pullPanelLayoutState,
         enabled = isPanelEnabled,
@@ -303,7 +359,8 @@ fun ChannelRoute(
             // already shown elsewhere in the app.
             val currentVodInfo = vodInfo
             val isVodPlaylist = playlist?.isVod == true
-            if ((isVodPlaylist || isSeriesPlaylist) && currentVodInfo != null) {
+            val isVodOrSeriesNow = isVodPlaylist || isSeriesPlaylist
+            if (isVodOrSeriesNow && currentVodInfo != null) {
                 com.m3u.smartphone.ui.business.channel.components.VodInfoPanel(
                     info = currentVodInfo,
                     favourite = channel?.favourite == true,
@@ -314,13 +371,44 @@ fun ChannelRoute(
                             if (playerState.isPlaying) {
                                 player.pause()
                             } else {
+                                // After stop() we need prepare() to reload
+                                // the media. play() alone would no-op.
+                                player.prepare()
                                 player.play()
-                                // Collapse panel so the user sees the video.
                                 pullPanelLayoutState.collapse()
                             }
                         }
                     },
-                    onToggleFavourite = viewModel::onFavorite
+                    onToggleFavourite = viewModel::onFavorite,
+                    episodes = seriesEpisodes,
+                    onPlayEpisode = { ep -> viewModel.onPlayEpisode(ep.id) }
+                )
+            } else if (isVodOrSeriesNow) {
+                // VOD / series but vodInfo is still loading from the network.
+                // Show a minimal placeholder with the data we already have
+                // from the Channel row (cover + title) instead of falling
+                // back to PlayerPanel, which would flash for half a second
+                // before the real panel arrives.
+                com.m3u.smartphone.ui.business.channel.components.VodInfoPanel(
+                    info = com.m3u.business.channel.VodInfo(
+                        title = channel?.title.orEmpty(),
+                        cover = channel?.cover
+                    ),
+                    favourite = channel?.favourite == true,
+                    isPlaying = playerState.isPlaying,
+                    onPlayPause = {
+                        val player = playerState.player
+                        if (player != null) {
+                            if (playerState.isPlaying) player.pause()
+                            else {
+                                player.play()
+                                pullPanelLayoutState.collapse()
+                            }
+                        }
+                    },
+                    onToggleFavourite = viewModel::onFavorite,
+                    episodes = seriesEpisodes,
+                    onPlayEpisode = { ep -> viewModel.onPlayEpisode(ep.id) }
                 )
             } else {
                 PlayerPanel(
@@ -494,11 +582,17 @@ private fun ChannelPlayer(
         // screen during the first 5-10s of channel switching and has no idea
         // whether the app is doing something or stuck. A central spinner +
         // "Conectando…" label removes that ambiguity entirely.
+        //
+        // Suppress the overlay while the VOD / series "preview" panel is
+        // open: in that state we *intentionally* stop the player (STATE_IDLE)
+        // so the user can read the synopsis before tapping REPRODUCIR.
+        // Showing "Cargando…" there is a lie — nothing is loading.
         val playState = playerState.playState
         val isLoading = playState == Player.STATE_BUFFERING ||
                 playState == Player.STATE_IDLE
         val hasError = playerState.playerError != null
-        if (isLoading && !hasError) {
+        val isVodPreview = (isSeriesPlaylist || playlist?.isVod == true) && isPanelExpanded
+        if (isLoading && !hasError && !isVodPreview) {
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)

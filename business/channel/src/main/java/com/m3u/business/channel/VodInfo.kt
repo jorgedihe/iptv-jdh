@@ -38,3 +38,21 @@ data class Person(
     /** Full TMDB image URL (e.g. https://image.tmdb.org/t/p/w185/abc.jpg). */
     val photoUrl: String? = null,
 )
+
+/** Lightweight representation of a series episode that the UI can render
+ *  without holding on to the heavy XtreamEpisodeInfo from the data layer. */
+@Immutable
+data class EpisodeRow(
+    /** Xtream stream id, used to build the playable URL. */
+    val id: String,
+    val seasonNumber: Int,
+    val episodeNumber: Int,
+    /** Human-friendly title, with the show prefix stripped if possible. */
+    val title: String,
+    /** "01:03:56" — comes straight from Xtream. */
+    val duration: String? = null,
+    /** TMDB still image (16:9 thumbnail) once enriched, null beforehand. */
+    val stillUrl: String? = null,
+    /** Episode synopsis from TMDB; null if no key or no match. */
+    val overview: String? = null,
+)

@@ -34,6 +34,7 @@ import com.m3u.core.foundation.util.basic.title
 import com.m3u.core.foundation.wrapper.Sort
 import com.m3u.data.database.model.Channel
 import com.m3u.data.database.model.isSeries
+import com.m3u.data.database.model.isVod
 import com.m3u.data.service.MediaCommand
 import com.m3u.i18n.R
 import com.m3u.smartphone.ui.business.favourite.components.FavoriteGallery
@@ -80,6 +81,9 @@ fun FavoriteRoute(
     }
 
     val series: Channel? by viewModel.series.collectAsStateWithLifecycle()
+    // Pre-play detail sheet state for VOD / series in Favorites.
+    var favVodDetailChannel by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Channel?>(null) }
+    var favVodDetailPlaylist by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<com.m3u.data.database.model.Playlist?>(null) }
 
     LifecycleResumeEffect(title) {
         Metadata.title = AnnotatedString(title.title())
@@ -107,10 +111,16 @@ fun FavoriteRoute(
             coroutineScope.launch {
                 val playlist = viewModel.getPlaylist(channel.playlistUrl)
                 when {
-                    playlist?.isSeries ?: false -> {
-                        viewModel.series.value = channel
+                    // VOD and series go through the pre-play detail sheet so
+                    // the player only starts when the user taps REPRODUCIR.
+                    playlist?.isSeries == true -> {
+                        favVodDetailChannel = channel
+                        favVodDetailPlaylist = playlist
                     }
-
+                    playlist?.isVod == true -> {
+                        favVodDetailChannel = channel
+                        favVodDetailPlaylist = playlist
+                    }
                     else -> {
                         helper.play(MediaCommand.Common(channel.id))
                         navigateToChannel()
@@ -137,23 +147,37 @@ fun FavoriteRoute(
             .then(modifier)
     )
 
-    EpisodesBottomSheet(
-        series = series,
-        episodes = episodes,
-        onEpisodeClick = { episode ->
+    // Pre-play detail sheet for VOD / series tapped from Favorites.
+    com.m3u.smartphone.ui.business.playlist.components.VodDetailSheet(
+        channel = favVodDetailChannel,
+        playlist = favVodDetailPlaylist,
+        onPlay = { ch ->
+            favVodDetailChannel = null
+            favVodDetailPlaylist = null
             coroutineScope.launch {
-                series?.let {
-                    val input = MediaCommand.XtreamEpisode(
-                        channelId = it.id,
-                        episode = episode
-                    )
-                    helper.play(input)
-                    navigateToChannel()
-                }
+                helper.play(MediaCommand.Common(ch.id))
+                navigateToChannel()
             }
         },
-        onRefresh = { series?.let { viewModel.seriesReplay.value += 1 } },
-        onDismissRequest = { viewModel.series.value = null }
+        onPlayEpisode = { seriesCh, ep ->
+            favVodDetailChannel = null
+            favVodDetailPlaylist = null
+            coroutineScope.launch {
+                val full = com.m3u.data.parser.xtream.XtreamEpisodeInfo(
+                    containerExtension = null,
+                    episodeNum = ep.episodeNumber.toString(),
+                    id = ep.id,
+                    title = ep.title,
+                )
+                helper.play(MediaCommand.XtreamEpisode(seriesCh.id, full))
+                navigateToChannel()
+            }
+        },
+        onFavourite = { id -> viewModel.favourite(id) },
+        onDismissRequest = {
+            favVodDetailChannel = null
+            favVodDetailPlaylist = null
+        }
     )
     SortBottomSheet(
         visible = isSortSheetVisible,

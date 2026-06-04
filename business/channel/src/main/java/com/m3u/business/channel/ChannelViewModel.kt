@@ -130,6 +130,125 @@ class ChannelViewModel @Inject constructor(
     val isSeriesPlaylist: Flow<Boolean> = playlist.map { it?.isSeries ?: false }
     val isVodPlaylist: Flow<Boolean> = playlist.map { it?.isVod ?: false }
 
+    /** Episodes of the currently playing series, lazily loaded once the
+     *  channel resolves to a series row in an Xtream provider. Empty for VOD
+     *  / Live TV / any non-Xtream playlist. */
+    val seriesEpisodes: StateFlow<List<EpisodeRow>> = flatmapCombined(playlist, channel) { p, c ->
+        if (p == null || c == null || p.source != DataSource.Xtream || !p.isSeries) {
+            return@flatmapCombined kotlinx.coroutines.flow.flowOf(emptyList())
+        }
+        kotlinx.coroutines.flow.flow<List<EpisodeRow>> {
+            emit(emptyList())
+            val raw = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                runCatching { playlistRepository.readEpisodesOrThrow(c) }.getOrDefault(emptyList())
+            }
+            // XtreamEpisodeInfo only carries id, episodeNum and the raw
+            // title. Extract season number by matching SxxExx in the title;
+            // fall back to 1 when not present.
+            val sxxExx = Regex("""S(\d+)E(\d+)""", RegexOption.IGNORE_CASE)
+            val initial = raw.map { ep ->
+                val match = sxxExx.find(ep.title.orEmpty())
+                val season = match?.groupValues?.get(1)?.toIntOrNull() ?: 1
+                val episodeNumber = ep.episodeNum?.toIntOrNull()
+                    ?: match?.groupValues?.get(2)?.toIntOrNull() ?: 0
+                val cleanTitle = ep.title.orEmpty()
+                    .substringAfter(" - ${match?.value ?: ""}", ep.title.orEmpty())
+                    .trim().trim('-').trim()
+                    .ifBlank { "Episodio $episodeNumber" }
+                EpisodeRow(
+                    id = ep.id.orEmpty(),
+                    seasonNumber = season,
+                    episodeNumber = episodeNumber,
+                    title = cleanTitle,
+                )
+            }.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+            emit(initial)
+
+            // Enrich with TMDB per-episode stills + overviews when we have
+            // a tmdb_id for the series and a baked-in API key. We fetch one
+            // season at a time (most series have 1-2 seasons in IPTV) and
+            // re-emit the list with the new fields populated. Failures stay
+            // silent — the user still sees the basic episode rows.
+            val seriesTmdbId = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                runCatching {
+                    val input = com.m3u.data.parser.xtream.XtreamInput
+                        .decodeFromPlaylistUrl(p.url)
+                    val seriesId = c.url
+                        .substringAfter("/series/${input.username}/${input.password}/")
+                        .substringBefore('.')
+                        .substringBefore('?')
+                    seriesId
+                }.getOrNull()
+            }
+            // Use the tmdb id baked into the series' VOD info — we already
+            // have it in [vodInfo] but it's a separate flow, so for the
+            // episodes path we just rely on Harmony's tmdb_id field.
+            val tmdbId = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                runCatching {
+                    val input = com.m3u.data.parser.xtream.XtreamInput
+                        .decodeFromPlaylistUrl(p.url)
+                    val sid = c.url
+                        .substringAfter("/series/${input.username}/${input.password}/")
+                        .substringBefore('.')
+                        .substringBefore('?')
+                    if (sid.isBlank() || !sid.all { it.isDigit() }) return@runCatching null
+                    val url = "${input.basicUrl}/player_api.php?username=${input.username}" +
+                            "&password=${input.password}&action=get_series_info&series_id=$sid"
+                    val req = okhttp3.Request.Builder().url(url).build()
+                    okhttp3.OkHttpClient().newCall(req).execute().use { resp ->
+                        if (!resp.isSuccessful) return@runCatching null
+                        val body = resp.body.string()
+                        val root = vodInfoJson.parseToJsonElement(body)
+                            as? kotlinx.serialization.json.JsonObject
+                            ?: return@runCatching null
+                        val info = root["info"] as? kotlinx.serialization.json.JsonObject
+                            ?: return@runCatching null
+                        (info["tmdb"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() && it != "null" }
+                            ?: (info["tmdb_id"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() && it != "null" }
+                    }
+                }.getOrNull()
+            }
+            if (!tmdbId.isNullOrBlank() && BuildConfig.TMDB_API_KEY.isNotBlank()) {
+                val seasonsPresent = initial.map { it.seasonNumber }.toSet()
+                val seasonMeta = seasonsPresent.associateWith { season ->
+                    TmdbCredits.episodesForSeason(tmdbId, season, BuildConfig.TMDB_API_KEY)
+                }
+                val enriched = initial.map { row ->
+                    val meta = seasonMeta[row.seasonNumber]?.get(row.episodeNumber)
+                        ?: return@map row
+                    row.copy(
+                        title = meta.tmdbName?.takeIf { it.isNotBlank() } ?: row.title,
+                        stillUrl = meta.stillUrl,
+                        overview = meta.overview,
+                    )
+                }
+                emit(enriched)
+            }
+        }
+    }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
+    /** Play a specific episode of the currently playing series. */
+    fun onPlayEpisode(episodeId: String) {
+        val series = channel.value ?: return
+        viewModelScope.launch {
+            val episodes = runCatching {
+                playlistRepository.readEpisodesOrThrow(series)
+            }.getOrNull() ?: return@launch
+            val target = episodes.firstOrNull { it.id.toString() == episodeId } ?: return@launch
+            playerManager.play(
+                com.m3u.data.service.MediaCommand.XtreamEpisode(
+                    channelId = series.id,
+                    episode = target
+                )
+            )
+        }
+    }
+
     /**
      * VOD metadata for the currently playing movie. Populated when both the
      * playlist is a VOD/Series Xtream list AND the channel resolves to a

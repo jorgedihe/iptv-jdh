@@ -307,6 +307,14 @@ class ForyouViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
+    /** Toggle favourite state for a channel. Used by VodDetailSheet's heart
+     *  button when the sheet is opened from the Foryou tab. */
+    fun favourite(channelId: Int) {
+        viewModelScope.launch {
+            channelRepository.favouriteOrUnfavourite(channelId)
+        }
+    }
+
     fun onUnsubscribePlaylist(url: String) {
         viewModelScope.launch {
             playlistRepository.unsubscribe(url)

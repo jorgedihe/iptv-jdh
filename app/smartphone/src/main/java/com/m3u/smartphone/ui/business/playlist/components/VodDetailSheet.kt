@@ -1,161 +1,98 @@
 package com.m3u.smartphone.ui.business.playlist.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import com.m3u.business.channel.EpisodeRow
+import com.m3u.business.channel.VodDetailLoader
+import com.m3u.business.channel.VodInfo
 import com.m3u.data.database.model.Channel
+import com.m3u.data.database.model.Playlist
+import com.m3u.smartphone.ui.business.channel.components.VodInfoPanel
 
+/**
+ * Full-screen pre-play detail for VOD / series. Loaded BEFORE the player —
+ * the user sees the poster, plot, cast, episodes etc. and only enters the
+ * actual player when they tap REPRODUCIR.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VodDetailSheet(
     channel: Channel?,
+    playlist: Playlist?,
     onPlay: (Channel) -> Unit,
+    onPlayEpisode: (Channel, EpisodeRow) -> Unit,
     onFavourite: (Int) -> Unit,
     onDismissRequest: () -> Unit
 ) {
     if (channel == null) return
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val context = LocalContext.current
+
+    // Load TMDB-enriched info + episodes as soon as the sheet opens.
+    var vodInfo by remember(channel.id) { mutableStateOf<VodInfo?>(null) }
+    var episodes by remember(channel.id) { mutableStateOf<List<EpisodeRow>>(emptyList()) }
+    LaunchedEffect(channel.id, playlist?.url) {
+        val p = playlist ?: return@LaunchedEffect
+        vodInfo = VodDetailLoader.loadVodInfo(p, channel)
+        episodes = VodDetailLoader.loadEpisodes(p, channel)
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainer
+        containerColor = MaterialTheme.colorScheme.background,
+        // Take the full screen so users see this as a proper detail page
+        // rather than a half-height sheet.
+        modifier = Modifier.fillMaxSize()
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 20.dp, end = 20.dp, bottom = 28.dp)
-        ) {
-            // Poster hero
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(2f / 3f)
-                    .heightIn(max = 360.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                contentAlignment = Alignment.Center
-            ) {
-                if (!channel.cover.isNullOrBlank()) {
-                    AsyncImage(
-                        model = remember(channel.cover) {
-                            ImageRequest.Builder(context)
-                                .data(channel.cover)
-                                .crossfade(220)
-                                .build()
-                        },
-                        contentDescription = channel.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            Text(
-                text = channel.title.trim(),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth()
+        Box(modifier = Modifier.fillMaxSize()) {
+            VodInfoPanel(
+                info = vodInfo ?: VodInfo(
+                    title = channel.title.orEmpty(),
+                    cover = channel.cover
+                ),
+                favourite = channel.favourite,
+                isPlaying = false,
+                onPlayPause = { onPlay(channel) },
+                onToggleFavourite = { onFavourite(channel.id) },
+                episodes = episodes,
+                onPlayEpisode = { ep -> onPlayEpisode(channel, ep) }
             )
-
-            if (channel.category.isNotBlank()) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = channel.category,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
+            // Close button (X) top-left, mirrors DiiXtream.
+            IconButton(
+                onClick = onDismissRequest,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(12.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.55f))
             ) {
-                Button(
-                    onClick = { onPlay(channel) },
-                    shape = RoundedCornerShape(28.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = Color.White
-                    ),
-                    modifier = Modifier.weight(1f).height(52.dp)
-                ) {
-                    Icon(Icons.Rounded.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "PLAY",
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                }
-
-                FilledIconButton(
-                    onClick = { onFavourite(channel.id) },
-                    shape = RoundedCornerShape(28.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = if (channel.favourite) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurface
-                    ),
-                    modifier = Modifier.size(52.dp)
-                ) {
-                    Icon(
-                        imageVector = if (channel.favourite) Icons.Rounded.Favorite
-                        else Icons.Outlined.FavoriteBorder,
-                        contentDescription = null
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = "Cerrar",
+                    tint = Color.White
+                )
             }
         }
     }

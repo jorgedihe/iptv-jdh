@@ -136,6 +136,10 @@ fun ForyouRoute(
     val episodes by viewModel.episodes.collectAsStateWithLifecycle()
 
     val series: Channel? by viewModel.series.collectAsStateWithLifecycle()
+    // Pre-play detail sheet state — opened for VOD and series; the actual
+    // player only starts when the user taps REPRODUCIR / an episode card.
+    var vodDetailChannel by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Channel?>(null) }
+    var vodDetailPlaylist by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<com.m3u.data.database.model.Playlist?>(null) }
     val subscribingPlaylistUrls by viewModel.subscribingPlaylistUrls.collectAsStateWithLifecycle()
     val refreshingEpgUrls by viewModel.refreshingEpgUrls.collectAsStateWithLifecycle(emptyList())
 
@@ -183,10 +187,15 @@ fun ForyouRoute(
                 coroutineScope.launch {
                     val playlist = viewModel.getPlaylist(channel.playlistUrl)
                     when {
+                        // VOD and series open the pre-play detail sheet first.
                         playlist?.isSeries == true -> {
-                            viewModel.series.value = channel
+                            vodDetailChannel = channel
+                            vodDetailPlaylist = playlist
                         }
-
+                        playlist?.isVod == true -> {
+                            vodDetailChannel = channel
+                            vodDetailPlaylist = playlist
+                        }
                         else -> {
                             helper.play(MediaCommand.Common(channel.id))
                             navigateToChannel()
@@ -209,23 +218,47 @@ fun ForyouRoute(
                 }
         )
 
-        EpisodesBottomSheet(
-            series = series,
-            episodes = episodes,
-            onEpisodeClick = { episode ->
-                coroutineScope.launch {
-                    series?.let { channel ->
-                        val input = MediaCommand.XtreamEpisode(
-                            channelId = channel.id,
-                            episode = episode
-                        )
-                        helper.play(input)
+        // The old EpisodesBottomSheet was replaced by the richer VodDetailSheet
+        // (full info + episode cards). We keep `series` and `episodes` state
+        // around for backward compat but no longer render this sheet.
+
+        // Pre-play detail sheet for VOD / series. Loads TMDB-enriched info
+        // and (for series) the episode list, then enters the actual player
+        // only when the user taps REPRODUCIR or an episode card.
+        com.m3u.smartphone.ui.business.playlist.components.VodDetailSheet(
+            channel = vodDetailChannel,
+            playlist = vodDetailPlaylist,
+            onPlay = { ch ->
+                val target = vodDetailChannel
+                val pl = vodDetailPlaylist
+                vodDetailChannel = null
+                vodDetailPlaylist = null
+                if (target != null) {
+                    coroutineScope.launch {
+                        helper.play(MediaCommand.Common(ch.id))
                         navigateToChannel()
                     }
                 }
             },
-            onRefresh = { series?.let { viewModel.seriesReplay.value += 1 } },
-            onDismissRequest = { viewModel.series.value = null }
+            onPlayEpisode = { seriesCh, ep ->
+                vodDetailChannel = null
+                vodDetailPlaylist = null
+                coroutineScope.launch {
+                    val full = com.m3u.data.parser.xtream.XtreamEpisodeInfo(
+                        containerExtension = null,
+                        episodeNum = ep.episodeNumber.toString(),
+                        id = ep.id,
+                        title = ep.title,
+                    )
+                    helper.play(MediaCommand.XtreamEpisode(seriesCh.id, full))
+                    navigateToChannel()
+                }
+            },
+            onFavourite = { id -> viewModel.favourite(id) },
+            onDismissRequest = {
+                vodDetailChannel = null
+                vodDetailPlaylist = null
+            }
         )
     }
 }

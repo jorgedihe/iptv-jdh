@@ -190,7 +190,10 @@ internal fun PlaylistRoute(
             onSort = { viewModel.sort(it) },
             onPlayChannel = { channel ->
                 when {
-                    isSeriesPlaylist -> viewModel.series.value = channel
+                    // Both VOD and series open the rich pre-play detail sheet
+                    // first; series only enters the actual player when the
+                    // user taps a specific episode card.
+                    isSeriesPlaylist -> vodDetailChannel = channel
                     isVodPlaylist -> vodDetailChannel = channel
                     else -> coroutineScope.launch {
                         helper.play(MediaCommand.Common(channel.id))
@@ -275,12 +278,34 @@ internal fun PlaylistRoute(
         )
     }
 
+    val playlistForDetail by viewModel.playlist.collectAsStateWithLifecycle()
     com.m3u.smartphone.ui.business.playlist.components.VodDetailSheet(
         channel = vodDetailChannel,
+        playlist = playlistForDetail,
         onPlay = { ch ->
             vodDetailChannel = null
             coroutineScope.launch {
                 helper.play(MediaCommand.Common(ch.id))
+                navigateToChannel()
+            }
+        },
+        onPlayEpisode = { series, ep ->
+            vodDetailChannel = null
+            coroutineScope.launch {
+                // Translate the EpisodeRow we made for the UI into the raw
+                // XtreamEpisodeInfo MediaCommand.XtreamEpisode wants.
+                val full = com.m3u.data.parser.xtream.XtreamEpisodeInfo(
+                    containerExtension = null,
+                    episodeNum = ep.episodeNumber.toString(),
+                    id = ep.id,
+                    title = ep.title,
+                )
+                helper.play(
+                    com.m3u.data.service.MediaCommand.XtreamEpisode(
+                        channelId = series.id,
+                        episode = full
+                    )
+                )
                 navigateToChannel()
             }
         },
