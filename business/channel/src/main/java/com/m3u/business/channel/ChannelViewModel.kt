@@ -128,6 +128,101 @@ class ChannelViewModel @Inject constructor(
 
 
     val isSeriesPlaylist: Flow<Boolean> = playlist.map { it?.isSeries ?: false }
+    val isVodPlaylist: Flow<Boolean> = playlist.map { it?.isVod ?: false }
+
+    /**
+     * VOD metadata for the currently playing movie. Populated when both the
+     * playlist is a VOD/Series Xtream list AND the channel resolves to a
+     * stream_id we can query via player_api's get_vod_info action. Null in
+     * every other case (Live TV, plain M3U, errors).
+     */
+    val vodInfo: StateFlow<VodInfo?> = flatmapCombined(playlist, channel) { p, c ->
+        if (p == null || c == null) return@flatmapCombined kotlinx.coroutines.flow.flowOf(null)
+        if (p.source != DataSource.Xtream || !(p.isVod || p.isSeries)) {
+            return@flatmapCombined kotlinx.coroutines.flow.flowOf(null)
+        }
+        kotlinx.coroutines.flow.flow<VodInfo?> {
+            emit(null)
+            emit(loadVodInfoOrNull(p, c))
+        }
+    }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = null
+        )
+
+    private val vodInfoHttp by lazy { okhttp3.OkHttpClient() }
+    private val vodInfoJson by lazy {
+        kotlinx.serialization.json.Json { ignoreUnknownKeys = true; isLenient = true }
+    }
+
+    /** Hit player_api.php?action=get_vod_info and shape the JSON into [VodInfo]. */
+    private suspend fun loadVodInfoOrNull(playlist: Playlist, channel: Channel): VodInfo? =
+        kotlinx.coroutines.withContext(Dispatchers.IO) {
+            runCatching {
+                val input = com.m3u.data.parser.xtream.XtreamInput.decodeFromPlaylistUrl(playlist.url)
+                // VOD URL looks like /movie/<u>/<p>/<stream_id>.<ext>, series URL like /series/<u>/<p>/<series_id>
+                val pathSegment = if (playlist.isVod) "movie" else "series"
+                val idSegment = channel.url.substringAfter("/$pathSegment/${input.username}/${input.password}/")
+                    .substringBefore('.')
+                    .substringBefore('?')
+                if (idSegment.isBlank() || !idSegment.all { it.isDigit() }) return@runCatching null
+                val action = if (playlist.isVod) "get_vod_info" else "get_series_info"
+                val idParam = if (playlist.isVod) "vod_id" else "series_id"
+                val url = "${input.basicUrl}/player_api.php?username=${input.username}" +
+                        "&password=${input.password}&action=$action&$idParam=$idSegment"
+                val request = okhttp3.Request.Builder().url(url).build()
+                vodInfoHttp.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@runCatching null
+                    val body = response.body.string()
+                    val root = vodInfoJson.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
+                        ?: return@runCatching null
+                    // Xtream wraps the payload under "info" for VOD and "info" too for series.
+                    val info = (root["info"] as? kotlinx.serialization.json.JsonObject) ?: root
+                    fun s(name: String): String? {
+                        val prim = info[name] as? kotlinx.serialization.json.JsonPrimitive ?: return null
+                        if (prim is kotlinx.serialization.json.JsonNull) return null
+                        return prim.content.takeIf { it.isNotBlank() && it != "null" }
+                    }
+                    val backdrop = (info["backdrop_path"] as? kotlinx.serialization.json.JsonArray)
+                        ?.firstOrNull()
+                        ?.let { it as? kotlinx.serialization.json.JsonPrimitive }
+                        ?.takeIf { it !is kotlinx.serialization.json.JsonNull }
+                        ?.content
+                    val tmdbId = s("tmdb_id")
+                    val base = VodInfo(
+                        title = s("name") ?: s("o_name") ?: channel.title,
+                        plot = s("plot") ?: s("description"),
+                        releaseDate = s("releasedate") ?: s("release_date") ?: s("year"),
+                        genre = s("genre"),
+                        duration = s("duration"),
+                        rating = s("rating") ?: s("rating_5based"),
+                        director = s("director"),
+                        cast = s("cast") ?: s("actors"),
+                        cover = s("cover_big") ?: s("movie_image") ?: channel.cover,
+                        backdrop = backdrop,
+                        tmdbId = tmdbId,
+                    )
+                    // Enrich with TMDB people photos when we have a tmdb_id
+                    // and a build-time API key. Failures fall back to the
+                    // raw name strings already in `base`.
+                    val tmdbResult = tmdbId
+                        ?.takeIf { BuildConfig.TMDB_API_KEY.isNotBlank() }
+                        ?.let { id ->
+                            if (playlist.isVod) {
+                                TmdbCredits.forMovie(id, BuildConfig.TMDB_API_KEY)
+                            } else {
+                                TmdbCredits.forSeries(id, BuildConfig.TMDB_API_KEY)
+                            }
+                        }
+                    base.copy(
+                        crewPeople = tmdbResult?.first.orEmpty(),
+                        castPeople = tmdbResult?.second.orEmpty()
+                    )
+                }
+            }.getOrNull()
+        }
 
     val isProgrammeSupported: Flow<Boolean> = playlist.map {
         it ?: return@map false
@@ -193,13 +288,15 @@ class ChannelViewModel @Inject constructor(
     private var dlnaSearchJob: Job? = null
 
     fun openDlnaDevices() {
+        // Start search immediately. The previous 800 ms delay made the bottom
+        // sheet flash "No se encontraron dispositivos" for nearly a second
+        // before the search even started, which made users think the scan
+        // wasn't running.
         dlnaSearchJob?.cancel()
+        _isDevicesVisible.value = true
         dlnaSearchJob = viewModelScope.launch {
-            delay(800.milliseconds)
-            if (!_isDevicesVisible.value) return@launch
             dlnaController.startSearch()
         }
-        _isDevicesVisible.value = true
     }
 
     fun closeDlnaDevices() {

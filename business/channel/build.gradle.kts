@@ -11,6 +11,16 @@ android {
     namespace = "com.m3u.business.channel"
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+    defaultConfig {
+        // TMDB v3 API key used to enrich VOD metadata (cast photos, crew).
+        // Read calls only; safe to ship with the binary. Override via
+        // -PtmdbApiKey=... at build time when rotating.
+        val tmdbApiKey: String = (project.findProperty("tmdbApiKey") as? String)
+            ?: System.getenv("TMDB_API_KEY")
+            ?: ""
+        buildConfigField("String", "TMDB_API_KEY", "\"$tmdbApiKey\"")
     }
     packaging {
         resources.excludes += "META-INF/**"
@@ -37,4 +47,9 @@ dependencies {
     implementation(libs.androidx.hilt.work)
 
     implementation(libs.net.mm2d.mmupnp.mmupnp)
+
+    // VOD / series metadata loader uses a plain OkHttp call + JsonObject
+    // parsing instead of going through the heavier xtream parser plumbing.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation(libs.kotlinx.serialization.json)
 }

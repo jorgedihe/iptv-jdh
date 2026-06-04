@@ -34,6 +34,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -65,6 +66,7 @@ import com.m3u.core.foundation.util.basic.title
 import com.m3u.data.database.model.AdjacentChannels
 import com.m3u.data.database.model.Channel
 import com.m3u.data.database.model.Playlist
+import com.m3u.data.database.model.isVod
 import com.m3u.i18n.R.string
 import com.m3u.smartphone.ui.business.channel.components.DlnaDevicesBottomSheet
 import com.m3u.smartphone.ui.business.channel.components.FormatsBottomSheet
@@ -122,6 +124,7 @@ fun ChannelRoute(
 
     val volume by viewModel.volume.collectAsStateWithLifecycle()
     val isSeriesPlaylist by viewModel.isSeriesPlaylist.collectAsStateWithLifecycle(false)
+    val vodInfo by viewModel.vodInfo.collectAsStateWithLifecycle()
     val isProgrammeSupported by viewModel.isProgrammeSupported.collectAsStateWithLifecycle(
         initialValue = false
     )
@@ -162,6 +165,22 @@ fun ChannelRoute(
 
     val isPanelExpanded = pullPanelLayoutState.isExpanded
     val fraction = pullPanelLayoutState.fraction
+
+    // For movies and series the app no longer starts playback the instant the
+    // user taps a tile in the list. Instead we open the player with the video
+    // PAUSED, expand the info panel so the user sees the synopsis / cast /
+    // favourite button first, and require them to tap the big "REPRODUCIR"
+    // button to actually start the stream. Mirrors DiiXtream's UX.
+    val isVodOrSeries = (playlist?.isVod == true) || isSeriesPlaylist
+    var pendingVodAutoExpand by rememberSaveable(channel?.id) { mutableStateOf(true) }
+    LaunchedEffect(isVodOrSeries, channel?.id, useVertical) {
+        if (isVodOrSeries && useVertical && pendingVodAutoExpand) {
+            // Pause the player and surface the info panel on first entry.
+            playerState.player?.pause()
+            pullPanelLayoutState.expand()
+            pendingVodAutoExpand = false
+        }
+    }
 
     val createRecordFileLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")) { uri ->
@@ -277,26 +296,54 @@ fun ChannelRoute(
         aspectRatio = aspectRatio,
         useVertical = useVertical,
         panel = {
-            PlayerPanel(
-                title = channel?.title.orEmpty(),
-                playlistTitle = playlist?.title.orEmpty(),
-                channelId = channel?.id ?: -1,
-                isPanelExpanded = isPanelExpanded,
-                isChannelsSupported = !isSeriesPlaylist,
-                isProgrammeSupported = isProgrammeSupported,
-                useVertical = useVertical,
-                channels = channels,
-                programmes = programmes,
-                programmeRange = programmeRange,
-                programmeReminderIds = programmeReminderIds,
-                onRemindProgramme = {
-                    requestIgnoreBatteryOptimizations.checkPermissionOrRationale {
-                        viewModel.onRemindProgramme(it)
-                    }
-                },
-                onCancelRemindProgramme = viewModel::onCancelRemindProgramme,
-                onRequestClosed = { pullPanelLayoutState.collapse() }
-            )
+            // For VOD / series swap the EPG-and-channel-list panel for a
+            // VodInfoPanel showing poster, plot, year, genre, duration, cast
+            // and director from get_vod_info. The EPG view here would be
+            // empty for movies (no programme data) and the channel list is
+            // already shown elsewhere in the app.
+            val currentVodInfo = vodInfo
+            val isVodPlaylist = playlist?.isVod == true
+            if ((isVodPlaylist || isSeriesPlaylist) && currentVodInfo != null) {
+                com.m3u.smartphone.ui.business.channel.components.VodInfoPanel(
+                    info = currentVodInfo,
+                    favourite = channel?.favourite == true,
+                    isPlaying = playerState.isPlaying,
+                    onPlayPause = {
+                        val player = playerState.player
+                        if (player != null) {
+                            if (playerState.isPlaying) {
+                                player.pause()
+                            } else {
+                                player.play()
+                                // Collapse panel so the user sees the video.
+                                pullPanelLayoutState.collapse()
+                            }
+                        }
+                    },
+                    onToggleFavourite = viewModel::onFavorite
+                )
+            } else {
+                PlayerPanel(
+                    title = channel?.title.orEmpty(),
+                    playlistTitle = playlist?.title.orEmpty(),
+                    channelId = channel?.id ?: -1,
+                    isPanelExpanded = isPanelExpanded,
+                    isChannelsSupported = !isSeriesPlaylist,
+                    isProgrammeSupported = isProgrammeSupported,
+                    useVertical = useVertical,
+                    channels = channels,
+                    programmes = programmes,
+                    programmeRange = programmeRange,
+                    programmeReminderIds = programmeReminderIds,
+                    onRemindProgramme = {
+                        requestIgnoreBatteryOptimizations.checkPermissionOrRationale {
+                            viewModel.onRemindProgramme(it)
+                        }
+                    },
+                    onCancelRemindProgramme = viewModel::onCancelRemindProgramme,
+                    onRequestClosed = { pullPanelLayoutState.collapse() }
+                )
+            }
         },
         content = {
             ChannelPlayer(
@@ -358,14 +405,6 @@ fun ChannelRoute(
         devices = devices,
         connectedDeviceUdn = connectedDeviceUdn,
         connectDlnaDevice = { viewModel.connectDlnaDevice(it) },
-        openInExternalPlayer = {
-            val channelUrl = channel?.url ?: return@DlnaDevicesBottomSheet
-            context.startActivity(
-                Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(channelUrl.toUri(), "video/*")
-                }.let { Intent.createChooser(it, openInExternalPlayerString.title()) }
-            )
-        },
         onDismiss = { viewModel.closeDlnaDevices() }
     )
 
@@ -534,6 +573,7 @@ private fun ChannelPlayer(
             maskState = maskState,
             favourite = favourite,
             isSeriesPlaylist = isSeriesPlaylist,
+            isVodPlaylist = playlist?.isVod == true,
             useVertical = useVertical,
             hasTrack = hasTrack,
             cwPosition = cwPosition,

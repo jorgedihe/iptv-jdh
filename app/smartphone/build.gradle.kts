@@ -36,8 +36,8 @@ android {
         applicationId = "net.jorgedihe.iptv"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "1.0.14"
+        versionCode = 23
+        versionName = "1.0.21"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testInstrumentationRunnerArguments["m3uMockServerUrl"] = m3uMockServerUrl.get()

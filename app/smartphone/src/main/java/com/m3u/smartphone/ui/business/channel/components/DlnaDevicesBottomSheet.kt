@@ -20,6 +20,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -44,13 +48,23 @@ internal fun DlnaDevicesBottomSheet(
     maskState: MaskState,
     onDismiss: () -> Unit,
     connectDlnaDevice: (device: Device) -> Unit,
-    openInExternalPlayer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val spacing = LocalSpacing.current
     val state = rememberModalBottomSheetState()
 
-    val openInExternalPlayerString = stringResource(string.feat_channel_open_in_external_app)
+    // Discovery can take a few seconds; we don't want to flash "no devices"
+    // the instant the sheet opens before the network scan even produces its
+    // first reply. Wait at least 4 s after opening before declaring empty.
+    var graceElapsed by remember { mutableStateOf(false) }
+    LaunchedEffect(isDevicesVisible) {
+        if (isDevicesVisible) {
+            graceElapsed = false
+            kotlinx.coroutines.delay(4_000)
+            graceElapsed = true
+        }
+    }
+
 
     LaunchedEffect(isDevicesVisible) {
         if (isDevicesVisible) state.show()
@@ -101,47 +115,57 @@ internal fun DlnaDevicesBottomSheet(
                             maxHeight = 320.dp
                         )
                 ) {
-                    item {
-                        ListItem(
-                            headlineContent = {
-                                Text(openInExternalPlayerString.title())
-                            },
-                            trailingContent = {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
-                                    contentDescription = openInExternalPlayerString
+                    // "Abrir en aplicación externa" entry removed — it
+                    // confused users who expected to see cast targets here,
+                    // and ExoPlayer already handles every format the external
+                    // intent could redirect to.
+                    when {
+                        devices.isEmpty() && !graceElapsed -> {
+                            item {
+                                ListItem(
+                                    headlineContent = {
+                                        Text(
+                                            text = "Buscando dispositivos…",
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    },
+                                    supportingContent = {
+                                        Text(
+                                            "Tu TV / Chromecast / receptor DLNA debe estar " +
+                                                    "encendido y en la misma red Wi-Fi."
+                                        )
+                                    },
+                                    trailingContent = { CircularProgressIndicator() }
                                 )
-                            },
-                            modifier = Modifier.clickable {
-                                openInExternalPlayer()
                             }
-                        )
-                    }
-                    if (devices.isEmpty() && !searching) {
-                        item {
-                            ListItem(
-                                headlineContent = {
-                                    Text(
-                                        text = "No se encontraron dispositivos",
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                },
-                                supportingContent = {
-                                    Text(
-                                        "Asegúrate de que tu TV / Chromecast / receptor " +
-                                                "DLNA está encendido y conectado a la misma " +
-                                                "red Wi-Fi que el teléfono."
-                                    )
-                                }
-                            )
                         }
-                    } else {
-                        items(devices) { device ->
-                            DlnaDeviceItem(
-                                device = device,
-                                isConnected = device.udn == connectedDeviceUdn,
-                                onClick = { connectDlnaDevice(device) },
-                            )
+                        devices.isEmpty() -> {
+                            item {
+                                ListItem(
+                                    headlineContent = {
+                                        Text(
+                                            text = "No se encontraron dispositivos",
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    },
+                                    supportingContent = {
+                                        Text(
+                                            "Asegúrate de que tu TV / Chromecast / receptor " +
+                                                    "DLNA está encendido y conectado a la misma " +
+                                                    "red Wi-Fi que el teléfono."
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                        else -> {
+                            items(devices) { device ->
+                                DlnaDeviceItem(
+                                    device = device,
+                                    isConnected = device.udn == connectedDeviceUdn,
+                                    onClick = { connectDlnaDevice(device) },
+                                )
+                            }
                         }
                     }
                     item {

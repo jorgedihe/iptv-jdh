@@ -124,6 +124,7 @@ fun ChannelMask(
     maskState: MaskState,
     favourite: Boolean,
     isSeriesPlaylist: Boolean,
+    isVodPlaylist: Boolean,
     isPanelExpanded: Boolean,
     useVertical: Boolean,
     hasTrack: Boolean,
@@ -354,9 +355,16 @@ fun ChannelMask(
                     alwaysShowReplay,
                     playerState.playerError
                 )
+                // Previous/Next channel navigation only makes sense for
+                // Live TV. For movies (VOD) and series, "adjacent" means an
+                // arbitrary item in the same category list — which is
+                // confusing rather than useful — so we hide both buttons.
+                val isVodOrSeriesPlaylist = isSeriesPlaylist || isVodPlaylist
                 Box(Modifier.size(36.dp)) {
                     androidx.compose.animation.AnimatedVisibility(
-                        visible = !currentIsPanelExpanded && adjacentChannels?.prevId != null,
+                        visible = !currentIsPanelExpanded &&
+                                !isVodOrSeriesPlaylist &&
+                                adjacentChannels?.prevId != null,
                         enter = fadeIn() + slideInHorizontally(initialOffsetX = { -it / 6 }),
                         exit = fadeOut() + slideOutHorizontally(targetOffsetX = { -it / 6 }),
                         modifier = Modifier.fillMaxSize()
@@ -387,7 +395,9 @@ fun ChannelMask(
                 }
                 Box(Modifier.size(36.dp)) {
                     androidx.compose.animation.AnimatedVisibility(
-                        visible = !currentIsPanelExpanded && adjacentChannels?.nextId != null,
+                        visible = !currentIsPanelExpanded &&
+                                !isVodOrSeriesPlaylist &&
+                                adjacentChannels?.nextId != null,
                         enter = fadeIn() + slideInHorizontally(initialOffsetX = { it / 6 }),
                         exit = fadeOut() + slideOutHorizontally(targetOffsetX = { it / 6 }),
                         modifier = Modifier.fillMaxSize()
