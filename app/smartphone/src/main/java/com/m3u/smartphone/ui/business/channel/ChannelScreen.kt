@@ -115,6 +115,7 @@ fun ChannelRoute(
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val isDevicesVisible by viewModel.isDevicesVisible.collectAsStateWithLifecycle()
     val searching by viewModel.searching.collectAsStateWithLifecycle()
+    val connectedDeviceUdn by viewModel.connectedDeviceUdn.collectAsStateWithLifecycle()
 
     val tracks by viewModel.tracks.collectAsStateWithLifecycle(emptyMap())
     val selectedFormats by viewModel.currentTracks.collectAsStateWithLifecycle(emptyMap())
@@ -355,6 +356,7 @@ fun ChannelRoute(
         searching = searching,
         isDevicesVisible = isDevicesVisible,
         devices = devices,
+        connectedDeviceUdn = connectedDeviceUdn,
         connectDlnaDevice = { viewModel.connectDlnaDevice(it) },
         openInExternalPlayer = {
             val channelUrl = channel?.url ?: return@DlnaDevicesBottomSheet

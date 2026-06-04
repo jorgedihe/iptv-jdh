@@ -187,6 +187,8 @@ class ChannelViewModel @Inject constructor(
     val devices: StateFlow<List<Device>> = dlnaController.devices
     // searching or not
     val searching: StateFlow<Boolean> = dlnaController.searching
+    // UDN of the active cast target — UI uses it to highlight + disconnect
+    val connectedDeviceUdn: StateFlow<String?> = dlnaController.connectedDeviceUdn
 
     private var dlnaSearchJob: Job? = null
 
@@ -210,6 +212,13 @@ class ChannelViewModel @Inject constructor(
     }
 
     fun connectDlnaDevice(device: Device) {
+        // Tap-to-toggle: if the same device is already active, the second tap
+        // disconnects it instead of re-sending the same stream. Matches the
+        // native Android Cast UX.
+        if (dlnaController.connectedDeviceUdn.value == device.udn) {
+            dlnaController.stop(device)
+            return
+        }
         val channel = channel.value ?: return
         dlnaController.play(device, channel)
     }

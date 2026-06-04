@@ -15,6 +15,11 @@ internal class DlnaController : ControlPoint.DiscoveryListener {
     private val _searching = MutableStateFlow(false)
     val searching = _searching.asStateFlow()
 
+    /** UDN of the device the user last asked us to cast to. Used by the UI to
+     *  highlight the active row and let the user disconnect with a second tap. */
+    private val _connectedDeviceUdn = MutableStateFlow<String?>(null)
+    val connectedDeviceUdn = _connectedDeviceUdn.asStateFlow()
+
     private var controlPoint: ControlPoint? = null
 
     fun startSearch() {
@@ -66,12 +71,18 @@ internal class DlnaController : ControlPoint.DiscoveryListener {
                 CURRENT_URI to channel.url,
                 CURRENT_URI_META_DATA to channel.toDidlLite()
             ),
-            onResult = {
+            onResult = { result ->
                 device.findAction(ACTION_PLAY)?.invoke(
                     argumentValues = mapOf(
                         INSTANCE_ID to DEFAULT_INSTANCE_ID,
                         SPEED to DEFAULT_SPEED
-                    )
+                    ),
+                    onResult = {
+                        // Both calls accepted by the renderer — mark the device
+                        // as connected so the UI can highlight it / let the
+                        // user disconnect with a tap.
+                        _connectedDeviceUdn.value = device.udn
+                    }
                 )
             }
         )
@@ -81,7 +92,12 @@ internal class DlnaController : ControlPoint.DiscoveryListener {
         device.findAction(ACTION_STOP)?.invoke(
             argumentValues = mapOf(
                 INSTANCE_ID to DEFAULT_INSTANCE_ID
-            )
+            ),
+            onResult = {
+                if (_connectedDeviceUdn.value == device.udn) {
+                    _connectedDeviceUdn.value = null
+                }
+            }
         )
     }
 

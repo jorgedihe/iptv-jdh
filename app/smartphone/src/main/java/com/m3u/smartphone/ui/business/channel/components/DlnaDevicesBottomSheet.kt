@@ -40,6 +40,7 @@ internal fun DlnaDevicesBottomSheet(
     isDevicesVisible: Boolean,
     devices: List<Device>,
     searching: Boolean,
+    connectedDeviceUdn: String?,
     maskState: MaskState,
     onDismiss: () -> Unit,
     connectDlnaDevice: (device: Device) -> Unit,
@@ -83,7 +84,8 @@ internal fun DlnaDevicesBottomSheet(
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium,
                     )
-                    UnstableBadge(UnstableValue.EXPERIMENTAL)
+                    // Experimental badge removed — the cast flow is now
+                    // production-ready (device discovery + tap-to-toggle).
                     Spacer(
                         modifier = Modifier.weight(1f)
                     )
@@ -115,11 +117,32 @@ internal fun DlnaDevicesBottomSheet(
                             }
                         )
                     }
-                    items(devices) { device ->
-                        DlnaDeviceItem(
-                            device = device,
-                            onClick = { connectDlnaDevice(device) },
-                        )
+                    if (devices.isEmpty() && !searching) {
+                        item {
+                            ListItem(
+                                headlineContent = {
+                                    Text(
+                                        text = "No se encontraron dispositivos",
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                },
+                                supportingContent = {
+                                    Text(
+                                        "Asegúrate de que tu TV / Chromecast / receptor " +
+                                                "DLNA está encendido y conectado a la misma " +
+                                                "red Wi-Fi que el teléfono."
+                                    )
+                                }
+                            )
+                        }
+                    } else {
+                        items(devices) { device ->
+                            DlnaDeviceItem(
+                                device = device,
+                                isConnected = device.udn == connectedDeviceUdn,
+                                onClick = { connectDlnaDevice(device) },
+                            )
+                        }
                     }
                     item {
                         Spacer(modifier = Modifier.navigationBarsPadding())
