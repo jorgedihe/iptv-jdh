@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -67,6 +68,7 @@ fun PlaylistsRoute(
     // using the non-EPG flow.
     val playlists by viewModel.playlistsWithCountsIncludingEpg.collectAsStateWithLifecycle()
     var showAddEpgDialog by remember { mutableStateOf(false) }
+    var showCuratedListsDialog by remember { mutableStateOf(false) }
     val activeKey by viewModel.activeProviderKey.collectAsStateWithLifecycle()
     val refreshing by viewModel.refreshingPlaylistUrls.collectAsStateWithLifecycle()
     // Backup / Restore are one-tap actions now — the file lives in the system
@@ -127,17 +129,36 @@ fun PlaylistsRoute(
         modifier = modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = navigateToAddPlaylist,
-                icon = { Icon(Icons.Rounded.Add, contentDescription = null) },
-                text = { Text("Añadir lista") },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                elevation = FloatingActionButtonDefaults.elevation(
-                    defaultElevation = 6.dp,
-                    pressedElevation = 12.dp
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Small secondary FAB on top — opens the curated free-lists
+                // picker (iptv-org). Users who already have an Xtream / M3U
+                // can ignore it; users without one can fill the app with
+                // public TV in two taps.
+                androidx.compose.material3.SmallFloatingActionButton(
+                    onClick = { showCuratedListsDialog = true },
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                ) {
+                    Icon(
+                        Icons.Rounded.Download,
+                        contentDescription = "Listas IPTV gratuitas"
+                    )
+                }
+                ExtendedFloatingActionButton(
+                    onClick = navigateToAddPlaylist,
+                    icon = { Icon(Icons.Rounded.Add, contentDescription = null) },
+                    text = { Text("Añadir lista") },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    elevation = FloatingActionButtonDefaults.elevation(
+                        defaultElevation = 6.dp,
+                        pressedElevation = 12.dp
+                    )
                 )
-            )
+            }
         }
     ) { scaffoldPadding ->
     Column(modifier = Modifier.fillMaxSize().padding(scaffoldPadding).background(MaterialTheme.colorScheme.background)) {
@@ -347,6 +368,17 @@ fun PlaylistsRoute(
             onConfirm = { title, url ->
                 viewModel.addEpg(title, url)
                 showAddEpgDialog = false
+            }
+        )
+    }
+    if (showCuratedListsDialog) {
+        CuratedListsDialog(
+            onDismiss = { showCuratedListsDialog = false },
+            onConfirm = { selected ->
+                selected.forEach { entry ->
+                    viewModel.subscribeM3uDirect(entry.title, entry.url)
+                }
+                showCuratedListsDialog = false
             }
         )
     }
@@ -1041,4 +1073,122 @@ private fun EditPlaylistDialog(
             }
         )
     }
+}
+
+/** Hand-curated subset of the iptv-org public playlists. Picking from a
+ *  short, opinionated list is much friendlier than dropping the user in
+ *  front of a directory of 200+ files. */
+private data class CuratedList(
+    val title: String,
+    val url: String,
+    val description: String,
+)
+
+private val CURATED_LISTS = listOf(
+    CuratedList(
+        title = "España",
+        url = "https://iptv-org.github.io/iptv/countries/es.m3u",
+        description = "Canales públicos españoles (RTVE, autonómicas, locales)."
+    ),
+    CuratedList(
+        title = "Latinoamérica",
+        url = "https://iptv-org.github.io/iptv/regions/amer.m3u",
+        description = "Canales de toda Latinoamérica."
+    ),
+    CuratedList(
+        title = "Internacional",
+        url = "https://iptv-org.github.io/iptv/index.m3u",
+        description = "Lista global completa (+8000 canales de todo el mundo)."
+    ),
+    CuratedList(
+        title = "Noticias",
+        url = "https://iptv-org.github.io/iptv/categories/news.m3u",
+        description = "Canales de noticias internacionales (BBC, DW, France 24, Euronews…)."
+    ),
+    CuratedList(
+        title = "Cine",
+        url = "https://iptv-org.github.io/iptv/categories/movies.m3u",
+        description = "Canales 24/7 de películas."
+    ),
+    CuratedList(
+        title = "Música",
+        url = "https://iptv-org.github.io/iptv/categories/music.m3u",
+        description = "Canales musicales temáticos."
+    ),
+)
+
+@Composable
+private fun CuratedListsDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (List<CuratedList>) -> Unit,
+) {
+    val selected = remember { mutableStateOf(setOf<String>()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Listas IPTV gratuitas") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Listas mantenidas por la comunidad iptv-org (dominio " +
+                            "público). Marca las que quieras añadir.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Column(
+                    modifier = Modifier
+                        .height(360.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    CURATED_LISTS.forEach { entry ->
+                        val checked = entry.url in selected.value
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    selected.value = if (checked)
+                                        selected.value - entry.url
+                                    else
+                                        selected.value + entry.url
+                                }
+                                .padding(vertical = 6.dp, horizontal = 4.dp)
+                        ) {
+                            androidx.compose.material3.Checkbox(
+                                checked = checked,
+                                onCheckedChange = null
+                            )
+                            Spacer(Modifier.size(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = entry.title,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = entry.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = selected.value.isNotEmpty(),
+                onClick = {
+                    val picks = CURATED_LISTS.filter { it.url in selected.value }
+                    onConfirm(picks)
+                }
+            ) { Text("Añadir") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        }
+    )
 }

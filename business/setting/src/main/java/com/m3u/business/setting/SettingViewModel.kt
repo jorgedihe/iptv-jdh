@@ -441,6 +441,20 @@ class SettingViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Subscribe to a raw M3U URL without going through the form-driven
+     * subscribe() flow. Used by the "Listas IPTV gratuitas" curated picker
+     * — the user has already chosen the title+URL, we just enqueue the
+     * worker the same way subscribe() does for M3U.
+     */
+    fun subscribeM3uDirect(title: String, url: String) {
+        val cleanTitle = title.trim()
+        val cleanUrl = url.trim()
+        if (cleanTitle.isEmpty() || cleanUrl.isEmpty()) return
+        SubscriptionWorker.m3u(workManager, cleanTitle, cleanUrl)
+        messager.emit(SettingMessage.Enqueued)
+    }
+
     fun subscribe() {
         val title = properties.titleState.value
         val url = properties.urlState.value
