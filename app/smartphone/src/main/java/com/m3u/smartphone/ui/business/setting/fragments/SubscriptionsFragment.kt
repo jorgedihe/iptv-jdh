@@ -33,6 +33,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Refresh
@@ -41,6 +43,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
@@ -191,8 +194,99 @@ private fun MainContentImpl(
             }
         }
 
+        // "Listas IPTV gratuitas" — section appended below the standard
+        // Add-list form so users have a one-screen flow. Each card shows
+        // whether the list is already in "Mis listas" and toggles it with
+        // one tap, no extra dialog.
+        item {
+            Spacer(Modifier.size(spacing.large))
+            CuratedListsSection()
+        }
         item {
             Spacer(Modifier.imePadding())
+        }
+    }
+}
+
+@Composable
+private fun CuratedListsSection(
+    viewModel: com.m3u.business.setting.SettingViewModel =
+        androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel()
+) {
+    val spacing = LocalSpacing.current
+    val playlists by viewModel.playlistsWithCountsIncludingEpg.collectAsStateWithLifecycle()
+    val existingUrls = remember(playlists) {
+        playlists.keys.map { it.url }.toSet()
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(spacing.small)
+    ) {
+        androidx.compose.material3.HorizontalDivider(
+            color = MaterialTheme.colorScheme.outlineVariant
+        )
+        Spacer(Modifier.size(spacing.extraSmall))
+        Text(
+            text = "LISTAS IPTV GRATUITAS",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = "Listas mantenidas por la comunidad iptv-org (dominio público). " +
+                    "Pulsa para añadir una. Aparecerán también en «Mis Listas».",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = spacing.small)
+        )
+        com.m3u.smartphone.ui.business.setting.components.CURATED_LISTS.forEach { entry ->
+            val added = entry.url in existingUrls
+            androidx.compose.material3.Surface(
+                color = if (added)
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                else
+                    MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = !added) {
+                        viewModel.subscribeM3uDirect(entry.title, entry.url)
+                    }
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = entry.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = entry.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.size(8.dp))
+                    if (added) {
+                        Icon(
+                            imageVector = Icons.Rounded.Check,
+                            contentDescription = "Añadida",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Rounded.Add,
+                            contentDescription = "Añadir",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
         }
     }
 }

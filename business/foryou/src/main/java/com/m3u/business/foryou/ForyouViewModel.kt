@@ -234,19 +234,29 @@ class ForyouViewModel @Inject constructor(
         // EPG playlists must never reach the Foryou provider selector. They
         // are a guide (XMLTV), not a channel source — surfacing them here
         // would let users "pick" an EPG to watch, which produces nothing.
-        val xtreamPlaylists = all
-            .filter { it.source != com.m3u.data.database.model.DataSource.EPG }
-            .filter {
-                runCatching { XtreamInput.decodeFromPlaylistUrl(it.url) }.isSuccess
-            }
+        val nonEpg = all.filter { it.source != com.m3u.data.database.model.DataSource.EPG }
 
-        val groups = xtreamPlaylists.groupBy { playlist ->
+        // Use the DB-stored source instead of trying to decode the URL —
+        // XtreamInput.decodeFromPlaylistUrl never rejects a well-formed http
+        // URL, so plain M3U links like the iptv-org playlists were getting
+        // mis-classified as Xtream and then collapsed under the same
+        // "host|" key, losing every entry after the first.
+        val xtreamPlaylists = nonEpg.filter {
+            it.source == com.m3u.data.database.model.DataSource.Xtream &&
+                    runCatching { XtreamInput.decodeFromPlaylistUrl(it.url) }
+                        .getOrNull()?.username?.isNotBlank() == true
+        }
+        val plainPlaylists = nonEpg.filter {
+            it.source != com.m3u.data.database.model.DataSource.Xtream
+        }
+
+        // Xtream providers: group the live/vod/series sub-playlists under a
+        // single provider entry keyed by basicUrl + username.
+        val xtreamGroups = xtreamPlaylists.groupBy { playlist ->
             val input = XtreamInput.decodeFromPlaylistUrl(playlist.url)
             "${input.basicUrl}|${input.username}"
         }
-        return groups.map { (key, playlists) ->
-            // Sanitize display name: take the title of the live playlist if available,
-            // strip the "live"/"vod"/"series" suffix if present.
+        val xtreamProviders = xtreamGroups.map { (key, playlists) ->
             val displayName = playlists
                 .firstOrNull { !it.isVod && !it.isSeries }
                 ?.title
@@ -261,6 +271,21 @@ class ForyouViewModel @Inject constructor(
                 series = playlists.firstOrNull { it.isSeries }
             )
         }
+
+        // Plain M3U providers: every M3U list becomes its own provider entry
+        // so users can switch between them in the IPTV tab dropdown. M3U has
+        // no VOD / series concept, only Live TV.
+        val m3uProviders = plainPlaylists.map { playlist ->
+            Provider(
+                key = playlist.url,
+                displayName = playlist.title.trim().ifBlank { playlist.url },
+                live = playlist,
+                vod = null,
+                series = null,
+            )
+        }
+
+        return (xtreamProviders + m3uProviders).sortedBy { it.displayName.lowercase() }
     }
 
     val subscribingPlaylistUrls: StateFlow<List<String>> =

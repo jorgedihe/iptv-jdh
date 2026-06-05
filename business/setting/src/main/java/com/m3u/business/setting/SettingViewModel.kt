@@ -442,17 +442,55 @@ class SettingViewModel @Inject constructor(
     }
 
     /**
-     * Subscribe to a raw M3U URL without going through the form-driven
-     * subscribe() flow. Used by the "Listas IPTV gratuitas" curated picker
-     * — the user has already chosen the title+URL, we just enqueue the
-     * worker the same way subscribe() does for M3U.
+     * Subscribe to several M3U URLs in sequence, one after the other, instead
+     * of firing them all at once. Used by the "Listas IPTV gratuitas" curated
+     * picker — if the user marks six lists, the previous approach kicked off
+     * six WorkManager workers in parallel, which saturated the HTTP connection
+     * pool and caused all but the first to finish in <50 ms reporting
+     * Success without actually downloading anything. Now we enqueue them
+     * under a shared unique work name with APPEND policy, so they run one
+     * at a time.
      */
-    fun subscribeM3uDirect(title: String, url: String) {
-        val cleanTitle = title.trim()
-        val cleanUrl = url.trim()
-        if (cleanTitle.isEmpty() || cleanUrl.isEmpty()) return
-        SubscriptionWorker.m3u(workManager, cleanTitle, cleanUrl)
+    fun subscribeM3uBatch(entries: List<Pair<String, String>>) {
+        val cleaned = entries
+            .map { (t, u) -> t.trim() to u.trim() }
+            .filter { (t, u) -> t.isNotEmpty() && u.isNotEmpty() }
+        if (cleaned.isEmpty()) return
+        cleaned.forEachIndexed { index, (title, url) ->
+            val request = androidx.work.OneTimeWorkRequestBuilder<com.m3u.data.worker.SubscriptionWorker>()
+                .setInputData(
+                    androidx.work.workDataOf(
+                        "title" to title,
+                        "url" to url,
+                        "data-source" to com.m3u.data.database.model.DataSource.M3U.value
+                    )
+                )
+                .addTag(url)
+                .addTag(com.m3u.data.worker.SubscriptionWorker.TAG)
+                .addTag(com.m3u.data.database.model.DataSource.M3U.value)
+                .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .setConstraints(
+                    androidx.work.Constraints.Builder()
+                        .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+                        .build()
+                )
+                .build()
+            // First call REPLACEs any previous batch; the rest APPEND so they
+            // chain behind it instead of starting in parallel.
+            val policy = if (index == 0) androidx.work.ExistingWorkPolicy.REPLACE
+            else androidx.work.ExistingWorkPolicy.APPEND
+            workManager.enqueueUniqueWork(
+                "curated-m3u-batch",
+                policy,
+                request
+            )
+        }
         messager.emit(SettingMessage.Enqueued)
+    }
+
+    /** Single-URL convenience kept for any other caller. */
+    fun subscribeM3uDirect(title: String, url: String) {
+        subscribeM3uBatch(listOf(title to url))
     }
 
     fun subscribe() {
