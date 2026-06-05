@@ -25,7 +25,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.AbsoluteRoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Notifications
@@ -453,13 +457,57 @@ private fun ChannelGalleryItem(
         else MaterialTheme.colorScheme.onSurface
     val contentColor = if (!isPlaying) MaterialTheme.colorScheme.onSurface
     else MaterialTheme.colorScheme.surfaceColorAtElevation(spacing.small)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // Render the channel logo (when the playlist provides one) next to the
+    // title — the chips look much more polished as little brand pills than
+    // as plain text, which is how DiiXtream and Tivimate do it.
     val text = composableOf {
-        Text(
-            text = channel.title,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold.takeIf { isPlaying },
-            modifier = Modifier.padding(spacing.medium)
-        )
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(spacing.small),
+            modifier = Modifier.padding(
+                start = spacing.small,
+                end = spacing.medium,
+                top = spacing.small,
+                bottom = spacing.small,
+            )
+        ) {
+            if (!channel.cover.isNullOrBlank()) {
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                        .background(
+                            // Make the logo readable on both selected (white)
+                            // and unselected (dark) chip backgrounds.
+                            if (isPlaying) androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.06f)
+                            else androidx.compose.ui.graphics.Color.White.copy(alpha = 0.08f)
+                        ),
+                    contentAlignment = androidx.compose.ui.Alignment.Center
+                ) {
+                    coil.compose.AsyncImage(
+                        model = remember(channel.cover) {
+                            coil.request.ImageRequest.Builder(context)
+                                .data(channel.cover)
+                                .crossfade(140)
+                                .build()
+                        },
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(2.dp)
+                    )
+                }
+            }
+            Text(
+                text = channel.title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold.takeIf { isPlaying },
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+        }
     }
     val onClick = lambda@{
         if (isPlaying) return@lambda
