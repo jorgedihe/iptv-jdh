@@ -13,7 +13,8 @@ internal class ChannelPreferenceProvider(
     appVersion: Int
 ) {
     private val limitedParallelism = Dispatchers.IO.limitedParallelism(1, "channel-preference")
-    private val cache = DiskLruCache.open(directory, appVersion, 3, 4 * 1024 * 1024) // 4mb
+    // 4 slots: cwPosition, mineType, thumbnail, cwDuration (added)
+    private val cache = DiskLruCache.open(directory, appVersion, 4, 4 * 1024 * 1024) // 4mb
 
     suspend operator fun get(
         channelUrl: String
@@ -25,7 +26,8 @@ internal class ChannelPreferenceProvider(
                 ChannelPreference(
                     cwPosition = it.getString(0)?.toLong() ?: -1L,
                     mineType = it.getString(1)?.takeIf { it.isNotEmpty() },
-                    thumbnail = it.getString(2)?.toUri()
+                    thumbnail = it.getString(2)?.toUri(),
+                    cwDuration = it.getString(3)?.toLongOrNull() ?: -1L
                 )
             }
         }
@@ -42,6 +44,7 @@ internal class ChannelPreferenceProvider(
             editor.set(0, value.cwPosition.toString())
             editor.set(1, value.mineType.orEmpty())
             editor.set(2, value.thumbnail?.toString().orEmpty())
+            editor.set(3, value.cwDuration.toString())
             editor.commit()
         }
     }
@@ -55,11 +58,13 @@ internal class ChannelPreferenceProvider(
 }
 
 /**
- * @param cwPosition the continue watching position of the channel.
- * @param mineType the mine type of the channel.
+ * @param cwPosition continue-watching playback position in millis. -1 = none.
+ * @param cwDuration last known content duration in millis (used to render the resume progress bar). -1 = unknown.
+ * @param mineType the mime type of the channel.
  */
 internal data class ChannelPreference(
     val cwPosition: Long = -1L,
     val mineType: String? = null,
-    val thumbnail: Uri? = null
+    val thumbnail: Uri? = null,
+    val cwDuration: Long = -1L
 )

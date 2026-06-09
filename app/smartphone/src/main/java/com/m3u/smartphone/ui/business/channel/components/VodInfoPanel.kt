@@ -32,8 +32,10 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -73,6 +75,15 @@ internal fun VodInfoPanel(
     onToggleFavourite: () -> Unit,
     episodes: List<EpisodeRow> = emptyList(),
     onPlayEpisode: (EpisodeRow) -> Unit = {},
+    // Resume state (VOD / series). When non-null the primary button switches
+    // to "REANUDAR (mm:ss)" and a secondary "Empezar desde el inicio" appears.
+    resumePosition: Long = -1L,
+    resumeDuration: Long = -1L,
+    onPlayFromStart: (() -> Unit)? = null,
+    // True when this is a series — comes from playlist.isSeries, NOT from the
+    // episodes-list size. We need it before episodes load so the play button
+    // never flashes for a fraction of a second on series.
+    isSeries: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -208,31 +219,85 @@ internal fun VodInfoPanel(
             }
         }
 
-        // ─── Primary action: Play / Pause ──────────────────────────────────
-        Row(
+        // ─── Primary action: Play / Resume / Pause ─────────────────────────
+        // For series we DO NOT show the big "REPRODUCIR" button because the
+        // base channel.url is the series info endpoint (not a playable stream).
+        // The user must tap an individual episode card below; that path uses
+        // MediaCommand.XtreamEpisode which builds the correct stream URL.
+        val hasResume = !isPlaying && resumePosition > 0L
+        val progressFraction: Float? = if (hasResume && resumeDuration > 0L) {
+            (resumePosition.toFloat() / resumeDuration.toFloat()).coerceIn(0f, 1f)
+        } else null
+        val primaryLabel: String = when {
+            isPlaying -> "PAUSAR"
+            hasResume -> "REANUDAR ${formatMillis(resumePosition)}"
+            else -> "REPRODUCIR"
+        }
+        Column(
             modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(
-                onClick = onPlayPause,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ),
-                shape = RoundedCornerShape(28.dp),
-                modifier = Modifier.fillMaxWidth().height(56.dp)
-            ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(Modifier.width(8.dp))
+            if (!isSeries) {
+                Button(
+                    onClick = onPlayPause,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
+                    shape = RoundedCornerShape(28.dp),
+                    modifier = Modifier.fillMaxWidth().height(56.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = primaryLabel,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+            } else {
+                // Brief hint so the user knows to pick an episode below.
                 Text(
-                    text = if (isPlaying) "PAUSAR" else "REPRODUCIR",
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleMedium
+                    text = "Toca un episodio para reproducirlo",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.fillMaxWidth()
                 )
+            }
+            // Thin progress bar that mirrors how far you got through the file.
+            // Only for VOD — for series each episode tracks its own resume.
+            if (!isSeries && progressFraction != null) {
+                LinearProgressIndicator(
+                    progress = { progressFraction },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp)),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                )
+            }
+            // Secondary "Start from beginning" link, only when there's
+            // something to reset (and we're not a series).
+            if (!isSeries && hasResume && onPlayFromStart != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    TextButton(onClick = onPlayFromStart) {
+                        Text(
+                            text = "Empezar desde el inicio",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
 
@@ -370,6 +435,23 @@ private fun EpisodeCard(
                         modifier = Modifier.size(28.dp)
                     )
                 }
+            }
+            // Centered play overlay so the user clearly understands the card
+            // is the start of playback (mirrors Netflix / Prime episode tiles).
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.55f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.PlayArrow,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp)
+                )
             }
             // Top-right EP badge
             Text(
@@ -521,5 +603,19 @@ private fun CircularActionButton(
             maxLines = 2,
             fontWeight = FontWeight.SemiBold
         )
+    }
+}
+
+/** Format a millisecond duration as "mm:ss" or "hh:mm:ss" if ≥ 1h. */
+private fun formatMillis(millis: Long): String {
+    if (millis <= 0L) return "0:00"
+    val totalSeconds = millis / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0L) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%d:%02d".format(minutes, seconds)
     }
 }

@@ -51,6 +51,18 @@ data class Channel(
     @ColumnInfo(name = "seen", defaultValue = "0")
     @Exclude
     val seen: Long = 0L,
+    /** Resume playback position in millis. 0 = not started / already finished. Only VOD & series. */
+    @ColumnInfo(name = "playback_position", defaultValue = "0")
+    @Exclude
+    val playbackPosition: Long = 0L,
+    /** Total content duration in millis (snapshot at last save). 0 = unknown. */
+    @ColumnInfo(name = "playback_duration", defaultValue = "0")
+    @Exclude
+    val playbackDuration: Long = 0L,
+    /** Epoch ms of the last playback-progress write. Used to order the "Continue watching" row. */
+    @ColumnInfo(name = "playback_updated_at", defaultValue = "0")
+    @Exclude
+    val playbackUpdatedAt: Long = 0L,
     @ColumnInfo(name = "relation_id", defaultValue = "NULL")
     @Exclude
     /**

@@ -318,12 +318,15 @@ class ForyouViewModel @Inject constructor(
 
     val specs = combine(
         unseensDuration.flatMapLatest { channelRepository.observeAllUnseenFavorites(it) },
-        channelRepository.observePlayedRecently(),
-    ) { channels, playedRecently ->
-        listOfNotNull<Recommend.Spec>(
-            playedRecently?.let { Recommend.CwSpec(it, playerManager.getCwPosition(it.url)) },
-            *(channels.map { channel -> Recommend.UnseenSpec(channel) }.take(8).toTypedArray())
-        )
+        channelRepository.observeContinueWatching(limit = 12),
+    ) { unseen, cw ->
+        // Continue-watching cards first (newest progress on the left), then
+        // unseen favourites. We map the stored playback_position straight into
+        // CwSpec so the carousel item can render a progress bar.
+        buildList<Recommend.Spec> {
+            cw.forEach { ch -> add(Recommend.CwSpec(ch, ch.playbackPosition)) }
+            unseen.take(8).forEach { ch -> add(Recommend.UnseenSpec(ch)) }
+        }
     }
         .flowOn(Dispatchers.IO)
         .stateIn(
@@ -331,6 +334,26 @@ class ForyouViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(1_000L),
             initialValue = emptyList()
         )
+
+    /**
+     * VOD / series the user has left in progress. Drives the "Seguir viendo"
+     * carousel at the top of the For-You screen. Limited to 12 items.
+     */
+    val continueWatching: StateFlow<List<Channel>> = channelRepository
+        .observeContinueWatching(limit = 12)
+        .flowOn(Dispatchers.IO)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000L),
+            initialValue = emptyList()
+        )
+
+    /** Allow swipe-to-dismiss / long-press to remove a card from the carousel. */
+    fun dismissContinueWatching(channelId: Int) {
+        viewModelScope.launch {
+            channelRepository.clearPlaybackProgress(channelId)
+        }
+    }
 
     /** Toggle favourite state for a channel. Used by VodDetailSheet's heart
      *  button when the sheet is opened from the Foryou tab. */

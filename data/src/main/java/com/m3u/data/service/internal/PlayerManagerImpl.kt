@@ -671,6 +671,21 @@ class PlayerManagerImpl @Inject constructor(
         return channelPreference?.cwPosition ?: -1L
     }
 
+    override suspend fun getCwSnapshot(channelUrl: String): PlayerManager.CwSnapshot? {
+        val pref = getChannelPreference(channelUrl) ?: return null
+        val pos = pref.cwPosition
+        if (pos <= 0L) return null
+        return PlayerManager.CwSnapshot(position = pos, duration = pref.cwDuration)
+    }
+
+    override suspend fun clearCwPosition(channelUrl: String) {
+        val pref = getChannelPreference(channelUrl) ?: return
+        addChannelPreference(
+            channelUrl,
+            pref.copy(cwPosition = -1L, cwDuration = -1L)
+        )
+    }
+
     private suspend fun onPlaybackIdle() {}
     private suspend fun onPlaybackBuffering() {}
 
@@ -722,12 +737,22 @@ class PlayerManagerImpl @Inject constructor(
             .collect { newCwPosition ->
                 timber.d("storeContinueWatching, received new position: $newCwPosition")
                 if (newCwPosition == -1L) return@collect
+                val newCwDuration = player.value?.contentDuration?.takeIf { it > 0 } ?: -1L
                 val channelPreference = getChannelPreference(channelUrl)
                 addChannelPreference(
                     channelUrl,
-                    channelPreference?.copy(cwPosition = newCwPosition)
-                        ?: ChannelPreference(cwPosition = newCwPosition)
+                    channelPreference?.copy(cwPosition = newCwPosition, cwDuration = newCwDuration)
+                        ?: ChannelPreference(cwPosition = newCwPosition, cwDuration = newCwDuration)
                 )
+                // Also mirror to the DB so the "Continue watching" row can enumerate.
+                channel.value?.id?.let { id ->
+                    channelRepository.updatePlaybackProgress(
+                        id = id,
+                        position = newCwPosition,
+                        duration = newCwDuration.coerceAtLeast(0L),
+                        updatedAt = kotlin.time.Clock.System.now().toEpochMilliseconds()
+                    )
+                }
             }
     }
 
@@ -761,8 +786,11 @@ class PlayerManagerImpl @Inject constructor(
             ) {
                 addChannelPreference(
                     channelUrl,
-                    channelPreference?.copy(cwPosition = -1L) ?: ChannelPreference(cwPosition = -1L)
+                    channelPreference?.copy(cwPosition = -1L, cwDuration = -1L)
+                        ?: ChannelPreference(cwPosition = -1L, cwDuration = -1L)
                 )
+                // Also drop the DB row so the "Continue watching" carousel removes it.
+                channel.value?.id?.let { channelRepository.clearPlaybackProgress(it) }
             }
         }
     }

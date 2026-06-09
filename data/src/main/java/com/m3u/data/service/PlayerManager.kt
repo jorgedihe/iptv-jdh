@@ -50,8 +50,21 @@ interface PlayerManager {
     val cwPosition: SharedFlow<Long>
     suspend fun onResetPlayback(channelUrl: String)
     suspend fun getCwPosition(channelUrl: String): Long
+
+    /**
+     * Snapshot of the persisted resume state for a VOD/series channel URL.
+     * Returns null when there is nothing stored. Both values are in milliseconds.
+     * `duration` may be -1 if it was unknown at the time of the last save.
+     */
+    suspend fun getCwSnapshot(channelUrl: String): CwSnapshot?
+
+    /** Discards the persisted resume position for a VOD/series URL ("Empezar desde el inicio"). */
+    suspend fun clearCwPosition(channelUrl: String)
+
     suspend fun reloadThumbnail(channelUrl: String): Uri?
     suspend fun syncThumbnail(channelUrl: String): Uri?
+
+    data class CwSnapshot(val position: Long, val duration: Long)
 }
 
 @Immutable

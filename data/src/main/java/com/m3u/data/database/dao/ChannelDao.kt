@@ -215,6 +215,36 @@ interface ChannelDao {
     @Query("UPDATE streams SET seen = :target WHERE id = :id")
     suspend fun updateSeen(id: Int, target: Long)
 
+    // ── Continue watching (resume) ──────────────────────────────────────────
+    @Query(
+        """
+            UPDATE streams
+            SET playback_position = :position,
+                playback_duration = :duration,
+                playback_updated_at = :updatedAt
+            WHERE id = :id
+        """
+    )
+    suspend fun updatePlaybackProgress(id: Int, position: Long, duration: Long, updatedAt: Long)
+
+    @Query("UPDATE streams SET playback_position = 0, playback_duration = 0, playback_updated_at = 0 WHERE id = :id")
+    suspend fun clearPlaybackProgress(id: Int)
+
+    /**
+     * VOD / series the user has left in progress. Live channels are filtered out at the
+     * write site (PlayerManager) because `isCurrentMediaItemDynamic` is detected there;
+     * here we just enumerate whatever has a non-zero position.
+     */
+    @Query(
+        """
+            SELECT * FROM streams
+            WHERE playback_position > 0
+            ORDER BY playback_updated_at DESC
+            LIMIT :limit
+        """
+    )
+    fun observeContinueWatching(limit: Int): Flow<List<Channel>>
+
     @Query(
         """
             WITH TargetChannel AS (

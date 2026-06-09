@@ -245,7 +245,7 @@ fun ForyouRoute(
                 vodDetailPlaylist = null
                 coroutineScope.launch {
                     val full = com.m3u.data.parser.xtream.XtreamEpisodeInfo(
-                        containerExtension = null,
+                        containerExtension = ep.containerExtension,
                         episodeNum = ep.episodeNumber.toString(),
                         id = ep.id,
                         title = ep.title,

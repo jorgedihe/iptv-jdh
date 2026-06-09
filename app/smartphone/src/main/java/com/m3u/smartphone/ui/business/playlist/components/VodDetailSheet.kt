@@ -15,6 +15,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,11 +25,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.m3u.business.channel.EpisodeRow
+import com.m3u.business.channel.ResumeViewModel
 import com.m3u.business.channel.VodDetailLoader
 import com.m3u.business.channel.VodInfo
 import com.m3u.data.database.model.Channel
 import com.m3u.data.database.model.Playlist
+import com.m3u.data.database.model.isSeries
 import com.m3u.smartphone.ui.business.channel.components.VodInfoPanel
 
 /**
@@ -58,6 +62,11 @@ fun VodDetailSheet(
         episodes = VodDetailLoader.loadEpisodes(p, channel)
     }
 
+    // Resume state ("seguir viendo"). Lives in DiskLruCache via PlayerManager.
+    val resumeVm: ResumeViewModel = hiltViewModel()
+    val resumeSnapshot by resumeVm.snapshot.collectAsState()
+    LaunchedEffect(channel.url) { resumeVm.refresh(channel.url) }
+
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
@@ -77,7 +86,16 @@ fun VodDetailSheet(
                 onPlayPause = { onPlay(channel) },
                 onToggleFavourite = { onFavourite(channel.id) },
                 episodes = episodes,
-                onPlayEpisode = { ep -> onPlayEpisode(channel, ep) }
+                onPlayEpisode = { ep -> onPlayEpisode(channel, ep) },
+                resumePosition = resumeSnapshot?.position ?: -1L,
+                resumeDuration = resumeSnapshot?.duration ?: -1L,
+                onPlayFromStart = resumeSnapshot?.let {
+                    {
+                        resumeVm.clear(channel.url, channel.id)
+                        onPlay(channel)
+                    }
+                },
+                isSeries = playlist?.isSeries == true
             )
             // Close button (X) top-left, mirrors DiiXtream.
             IconButton(

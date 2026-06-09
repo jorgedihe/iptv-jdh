@@ -295,7 +295,7 @@ internal fun PlaylistRoute(
                 // Translate the EpisodeRow we made for the UI into the raw
                 // XtreamEpisodeInfo MediaCommand.XtreamEpisode wants.
                 val full = com.m3u.data.parser.xtream.XtreamEpisodeInfo(
-                    containerExtension = null,
+                    containerExtension = ep.containerExtension,
                     episodeNum = ep.episodeNumber.toString(),
                     id = ep.id,
                     title = ep.title,

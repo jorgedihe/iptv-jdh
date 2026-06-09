@@ -55,4 +55,8 @@ data class EpisodeRow(
     val stillUrl: String? = null,
     /** Episode synopsis from TMDB; null if no key or no match. */
     val overview: String? = null,
+    /** File extension reported by Xtream ("mp4", "mkv", "avi"…). Required to
+     *  build a playable URL — without it, `copyXtreamEpisode` produces
+     *  ".../{id}.null" and the player buffers forever. */
+    val containerExtension: String? = null,
 )

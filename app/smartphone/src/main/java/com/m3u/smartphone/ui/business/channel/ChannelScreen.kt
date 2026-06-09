@@ -181,17 +181,13 @@ fun ChannelRoute(
     // first, and require them to tap the big "REPRODUCIR" button to actually
     // start the stream. Mirrors DiiXtream's UX.
     val isVodOrSeries = (playlist?.isVod == true) || isSeriesPlaylist
-    var pendingVodAutoExpand by rememberSaveable(channel?.id) { mutableStateOf(true) }
-    LaunchedEffect(isVodOrSeries, channel?.id, useVertical) {
-        if (isVodOrSeries && useVertical && pendingVodAutoExpand) {
-            // Fully stop the player (not just pause) so the user doesn't see
-            // a "loading" spinner / first frame trying to render under the
-            // info sheet. play() in the REPRODUCIR button restores it.
-            playerState.player?.stop()
-            pullPanelLayoutState.expand()
-            pendingVodAutoExpand = false
-        }
-    }
+    // NOTE: the previous auto-stop + auto-expand of the info panel here was
+    // designed for the old flow where the VodInfoPanel lived INSIDE the
+    // PlayerActivity. Now the pre-play detail (VodDetailSheet) opens BEFORE
+    // PlayerActivity is even started, so by the time we land here the user
+    // already tapped REPRODUCIR / an episode and the player must keep
+    // playing — calling player.stop() here was the root cause of
+    // "series arrancan en pausa".
 
     val createRecordFileLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")) { uri ->

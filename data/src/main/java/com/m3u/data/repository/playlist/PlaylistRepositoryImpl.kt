@@ -524,7 +524,7 @@ internal class PlaylistRepositoryImpl @Inject constructor(
         channelDao
             .getCategoriesByPlaylistUrl(url, query)
             .filterNot { it in hiddenCategories }
-            .sortedByDescending { it in pinnedCategories }
+            .sortedWith(categoryComparator(pinnedCategories))
     }
 
     override fun observeCategoriesByPlaylistUrlIgnoreHidden(
@@ -539,10 +539,32 @@ internal class PlaylistRepositoryImpl @Inject constructor(
             .map { categories ->
                 categories
                     .filterNot { it in hiddenCategories }
-                    .sortedByDescending { it in pinnedCategories }
+                    .sortedWith(categoryComparator(pinnedCategories))
             }
     }
         .flowOn(Dispatchers.Default)
+
+    // Normalises noisy Xtream category names so alphabetical sort matches what
+    // users expect. Many providers ship names like "ES| ATRES PLAYER ᴿᴬᵂ" or
+    // "ES| DAZN EXCLUSIVE ᴴᴰ/ᴿᴬᵂ" with Unicode modifier letters and no-break
+    // spaces; without stripping them, "RAKUTEN TV ᴿᴬᵂ" can sort before "RAW"-
+    // free names of the same provider and lists look randomised.
+    private val categorySortStripRegex = Regex(
+        "[ ᴀ-ᶿʰ-˿⁰-₟]"
+    )
+    // NOTE: we intentionally KEEP the "ES|"/country prefix in the sort key so the
+    // order matches what other Xtream players do — e.g. "4K UHD" sorts before
+    // "ES| 24/7" because '4' (0x34) < 'E' (0x45). Only Unicode modifier letters /
+    // superscripts and no-break spaces are stripped so they don't distort
+    // comparison between "DAZN ESPAÑA" and "DAZN ᴿᴬᵂ".
+    private fun categorySortKey(name: String): String = name
+        .replace(categorySortStripRegex, "")
+        .trim()
+        .lowercase()
+
+    private fun categoryComparator(pinnedCategories: List<String>): Comparator<String> =
+        compareByDescending<String> { it in pinnedCategories }
+            .thenBy { categorySortKey(it) }
 
     override suspend fun unsubscribe(url: String): Playlist? {
         val playlist = playlistDao.get(url)

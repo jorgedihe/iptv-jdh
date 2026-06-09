@@ -75,6 +75,22 @@ internal class ChannelRepositoryImpl @Inject constructor(
         channelDao.updateSeen(id, current)
     }
 
+    override suspend fun updatePlaybackProgress(id: Int, position: Long, duration: Long, updatedAt: Long) {
+        channelDao.updatePlaybackProgress(
+            id = id,
+            position = position.coerceAtLeast(0),
+            duration = duration.coerceAtLeast(0),
+            updatedAt = updatedAt.coerceAtLeast(0)
+        )
+    }
+
+    override suspend fun clearPlaybackProgress(id: Int) {
+        channelDao.clearPlaybackProgress(id)
+    }
+
+    override fun observeContinueWatching(limit: Int): Flow<List<Channel>> =
+        channelDao.observeContinueWatching(limit).catch { emit(emptyList()) }
+
     override suspend fun getPlayedRecently(): Channel? {
         return channelDao.getPlayedRecently()
     }

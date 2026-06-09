@@ -87,6 +87,7 @@ object VodDetailLoader {
         val episodeNumber: Int,
         val id: String,
         val rawTitle: String,
+        val containerExtension: String?,
     )
 
     /** Pulls the episode list straight from get_series_info via OkHttp,
@@ -133,7 +134,9 @@ object VodDetailLoader {
                             ?.takeIf { it.isNotBlank() } ?: return@forEach
                         val rawTitle = (ep["title"] as? JsonPrimitive)?.content.orEmpty()
                         val epNum = (ep["episode_num"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
-                        parsed.add(ParsedEpisode(seasonNumber, epNum, id, rawTitle))
+                        val containerExt = (ep["container_extension"] as? JsonPrimitive)?.content
+                            ?.takeIf { it.isNotBlank() && it != "null" }
+                        parsed.add(ParsedEpisode(seasonNumber, epNum, id, rawTitle, containerExt))
                     }
                 }
             }
@@ -152,6 +155,7 @@ object VodDetailLoader {
                 seasonNumber = p.season,
                 episodeNumber = p.episodeNumber,
                 title = cleanTitle,
+                containerExtension = p.containerExtension,
             )
         }.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
 

@@ -32,6 +32,14 @@ interface ChannelRepository {
     suspend fun favouriteOrUnfavourite(id: Int)
     suspend fun hide(id: Int, target: Boolean)
     suspend fun reportPlayed(id: Int)
+
+    /** Persists VOD/series resume position. `updatedAt` is epoch-millis. */
+    suspend fun updatePlaybackProgress(id: Int, position: Long, duration: Long, updatedAt: Long)
+    /** Drops the stored resume position for the given channel id. */
+    suspend fun clearPlaybackProgress(id: Int)
+    /** Most-recently-watched VOD/series with non-zero progress (newest first). */
+    fun observeContinueWatching(limit: Int): Flow<List<Channel>>
+
     suspend fun getPlayedRecently(): Channel?
     fun observePlayedRecently(): Flow<Channel?>
     fun observeAllUnseenFavorites(limit: Duration): Flow<List<Channel>>
