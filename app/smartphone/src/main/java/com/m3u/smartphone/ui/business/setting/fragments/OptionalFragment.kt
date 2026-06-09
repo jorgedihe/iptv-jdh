@@ -66,26 +66,6 @@ internal fun OptionalFragment(
             )
         }
         item {
-            var fullInfoPlayer by mutablePreferenceOf(PreferencesKeys.FULL_INFO_PLAYER)
-            SwitchSharedPreference(
-                title = string.feat_setting_full_info_player,
-                content = string.feat_setting_full_info_player_description,
-                icon = Icons.Rounded.Details,
-                checked = fullInfoPlayer,
-                onChanged = { fullInfoPlayer = !fullInfoPlayer }
-            )
-        }
-        item {
-            var slider by mutablePreferenceOf(PreferencesKeys.SLIDER)
-            SwitchSharedPreference(
-                title = string.feat_setting_slider,
-                icon = Icons.Rounded.SettingsEthernet,
-                checked = slider,
-                onChanged = { slider = !slider }
-            )
-        }
-
-        item {
             var zappingMode by mutablePreferenceOf(PreferencesKeys.ZAPPING_MODE)
             SwitchSharedPreference(
                 title = string.feat_setting_zapping_mode,
@@ -185,21 +165,6 @@ internal fun OptionalFragment(
                     playlistStrategy = when (playlistStrategy) {
                         PlaylistStrategy.ALL -> PlaylistStrategy.KEEP
                         else -> PlaylistStrategy.ALL
-                    }
-                }
-            )
-        }
-        item {
-            var connectTimeout by mutablePreferenceOf(PreferencesKeys.CONNECT_TIMEOUT)
-            TextPreference(
-                title = stringResource(string.feat_setting_connect_timeout).title(),
-                icon = Icons.Rounded.Timer,
-                trailing = "${connectTimeout / 1000}s",
-                onClick = {
-                    connectTimeout = when (connectTimeout) {
-                        ConnectTimeout.LONG -> ConnectTimeout.SHORT
-                        ConnectTimeout.SHORT -> ConnectTimeout.LONG
-                        else -> ConnectTimeout.SHORT
                     }
                 }
             )

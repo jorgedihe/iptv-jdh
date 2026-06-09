@@ -6,6 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ColorLens
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -24,6 +25,7 @@ internal fun RegularPreferences(
     navigateToOptional: () -> Unit,
     codecPackEnabled: Boolean,
     navigateToCodecPack: () -> Unit,
+    navigateToAbout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val spacing = LocalSpacing.current
@@ -48,5 +50,11 @@ internal fun RegularPreferences(
         // "Decoder Components" entry removed — the codec pack is now
         // installed automatically on first launch by M3UApplication.
         // Users don't need to know it exists.
+        Preference(
+            title = "Acerca de IPTV JDH",
+            icon = Icons.Rounded.Info,
+            enabled = fragment != SettingDestination.About,
+            onClick = navigateToAbout
+        )
     }
 }

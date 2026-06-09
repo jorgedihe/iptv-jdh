@@ -48,10 +48,6 @@ internal fun OtherPreferences(
                 context.startActivity(intent)
             }
         )
-        Preference(
-            title = stringResource(string.feat_setting_app_version).title(),
-            content = "$versionName ($versionCode)",
-            icon = Icons.Rounded.Info,
-        )
+        // App version moved into the new "Acerca de IPTV JDH" panel.
     }
 }

@@ -22,6 +22,7 @@ internal fun PreferencesFragment(
     navigateToThemeSelector: () -> Unit,
     navigateToOptional: () -> Unit,
     navigateToCodecPack: () -> Unit,
+    navigateToAbout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val spacing = LocalSpacing.current
@@ -38,7 +39,8 @@ internal fun PreferencesFragment(
                 navigateToThemeSelector = navigateToThemeSelector,
                 navigateToOptional = navigateToOptional,
                 codecPackEnabled = codecPackEnabled,
-                navigateToCodecPack = navigateToCodecPack
+                navigateToCodecPack = navigateToCodecPack,
+                navigateToAbout = navigateToAbout
             )
         }
         item {

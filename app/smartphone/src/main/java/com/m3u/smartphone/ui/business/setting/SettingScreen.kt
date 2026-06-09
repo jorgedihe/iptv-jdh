@@ -38,6 +38,7 @@ import com.m3u.data.database.model.ColorScheme
 import com.m3u.data.database.model.Playlist
 import com.m3u.i18n.R.string
 import com.m3u.smartphone.ui.business.setting.components.CanvasBottomSheet
+import com.m3u.smartphone.ui.business.setting.fragments.AboutFragment
 import com.m3u.smartphone.ui.business.setting.fragments.AppearanceFragment
 import com.m3u.smartphone.ui.business.setting.fragments.CodecPackFragment
 import com.m3u.smartphone.ui.business.setting.fragments.OptionalFragment
@@ -171,6 +172,7 @@ private fun SettingScreen(
     val appearanceTitle = stringResource(string.feat_setting_appearance)
     val optionalTitle = stringResource(string.feat_setting_optional_features)
     val codecPackTitle = stringResource(string.feat_setting_codec_pack)
+    val aboutTitle = "Acerca de IPTV JDH"
 
     val colorArgb by preferenceOf(PreferencesKeys.COLOR_ARGB)
 
@@ -181,13 +183,14 @@ private fun SettingScreen(
         navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, it)
     }
 
-    LifecycleResumeEffect(destination, defaultTitle, playlistTitle, appearanceTitle, optionalTitle, codecPackTitle) {
+    LifecycleResumeEffect(destination, defaultTitle, playlistTitle, appearanceTitle, optionalTitle, codecPackTitle, aboutTitle) {
         Metadata.title = when (destination) {
             SettingDestination.Default -> defaultTitle
             SettingDestination.Playlists -> playlistTitle
             SettingDestination.Appearance -> appearanceTitle
             SettingDestination.Optional -> optionalTitle
             SettingDestination.CodecPack -> codecPackTitle
+            SettingDestination.About -> aboutTitle
         }
             .title()
             .let(::AnnotatedString)
@@ -251,6 +254,14 @@ private fun SettingScreen(
                         )
                     }
                 },
+                navigateToAbout = {
+                    coroutineScope.launch {
+                        navigator.navigateTo(
+                            pane = ListDetailPaneScaffoldRole.Detail,
+                            contentKey = SettingDestination.About
+                        )
+                    }
+                },
                 modifier = Modifier.fillMaxSize()
             )
         },
@@ -288,6 +299,15 @@ private fun SettingScreen(
                         onInstall = onInstallCodecPack,
                         onDelete = onDeleteCodecPack,
                         onRefresh = onRefreshCodecPack,
+                        contentPadding = contentPadding,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                SettingDestination.About -> {
+                    AboutFragment(
+                        versionName = versionName,
+                        versionCode = versionCode,
                         contentPadding = contentPadding,
                         modifier = Modifier.fillMaxSize()
                     )
