@@ -43,7 +43,7 @@ import com.m3u.smartphone.ui.material.components.TrailingIconPreference
 import com.m3u.smartphone.ui.material.model.LocalSpacing
 
 private const val GITHUB_URL  = "https://github.com/jorgedihe/iptv-jdh"
-private const val PRIVACY_URL = "https://jorgedihe.net/iptv-jdh/privacy.html"
+private const val PRIVACY_URL = "https://github.com/jorgedihe/iptv-jdh/blob/master/PRIVACY.md"
 private const val UPSTREAM_URL = "https://github.com/oxyroid/M3UAndroid"
 
 @Composable
@@ -146,7 +146,7 @@ internal fun AboutFragment(
             )
             TrailingIconPreference(
                 title = "Política de privacidad",
-                content = "jorgedihe.net/iptv-jdh/privacy",
+                content = "github.com/jorgedihe/iptv-jdh/PRIVACY.md",
                 icon = Icons.Rounded.PrivacyTip,
                 trailingIcon = Icons.AutoMirrored.Rounded.OpenInNew,
                 onClick = { uriHandler.openUri(PRIVACY_URL) }
