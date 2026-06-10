@@ -42,7 +42,7 @@ import com.m3u.smartphone.ui.material.components.Preference
 import com.m3u.smartphone.ui.material.components.TrailingIconPreference
 import com.m3u.smartphone.ui.material.model.LocalSpacing
 
-private const val GITHUB_URL  = "https://github.com/jorgedihe/iptv"
+private const val GITHUB_URL  = "https://github.com/jorgedihe/iptv-jdh"
 private const val PRIVACY_URL = "https://jorgedihe.net/iptv-jdh/privacy.html"
 private const val UPSTREAM_URL = "https://github.com/oxyroid/M3UAndroid"
 
@@ -139,7 +139,7 @@ internal fun AboutFragment(
         ) {
             TrailingIconPreference(
                 title = "Ver código en GitHub",
-                content = "github.com/jorgedihe/iptv",
+                content = "github.com/jorgedihe/iptv-jdh",
                 icon = Icons.Rounded.Code,
                 trailingIcon = Icons.AutoMirrored.Rounded.OpenInNew,
                 onClick = { uriHandler.openUri(GITHUB_URL) }

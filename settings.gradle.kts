@@ -17,7 +17,7 @@ dependencyResolutionManagement {
         maven("https://plugins.gradle.org/m2/")
     }
 }
-rootProject.name = "iptv"
+rootProject.name = "iptv-jdh"
 include(
     ":app:smartphone",
     ":app:tv",
