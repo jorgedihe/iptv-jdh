@@ -23,7 +23,7 @@ import com.m3u.data.database.model.Programme
         Episode::class,
         ColorScheme::class
     ],
-    version = 22,
+    version = 23,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(
@@ -66,6 +66,8 @@ import com.m3u.data.database.model.Programme
         // playback_updated_at) to `streams` so the "Continue watching" carousel
         // on the For-You screen can list every VOD/series in progress.
         AutoMigration(from = 21, to = 22),
+        // v23: no schema change; data-only migration runs MIGRATION_22_23 (see
+        // DatabaseMigrations) to clear the broken auto_refresh_programmes flag.
     ]
 )
 @TypeConverters(Converters::class)

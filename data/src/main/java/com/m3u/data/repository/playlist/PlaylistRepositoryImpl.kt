@@ -245,15 +245,15 @@ internal class PlaylistRepositoryImpl @Inject constructor(
                     channelDao.deleteByPlaylistUrlIgnoreFavOrHidden(livePlaylist.url)
                 }
             }
-            // Xtream Live playlists carry the XMLTV endpoint automatically
-            // (epgUrlsOrXtreamXmlUrl picks it up from the credentials), but
-            // the EPG worker only runs at next launch if the playlist is
-            // flagged autoRefreshProgrammes=true. Default it to true on
-            // first subscribe so the EPG actually downloads instead of the
-            // user having to dig into per-list config to enable it.
-            playlistDao.insertOrReplace(livePlaylist.copy(autoRefreshProgrammes = true))
-            // Trigger the EPG download right now too, so users see the
-            // guide without waiting for the next app launch.
+            // EPG download triggered once on first subscribe so the user gets
+            // the guide right away without waiting. We intentionally do NOT
+            // set autoRefreshProgrammes=true here — it caused the EPG to be
+            // re-downloaded on every single app launch (AppViewModel.init()
+            // calls refreshProgrammes() which queries auto_refresh_programmes=1
+            // and re-enqueues with ignoreCache=true), spamming the user with
+            // download notifications. M3U playlists keep the flag at its
+            // default false; Xtream now matches that behaviour. The user can
+            // opt in to background refresh later from the per-list config.
             SubscriptionWorker.epg(
                 workManager = workManager,
                 playlistUrl = livePlaylist.url,

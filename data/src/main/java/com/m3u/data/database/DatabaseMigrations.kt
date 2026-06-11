@@ -80,4 +80,14 @@ internal object DatabaseMigrations {
     )
     class AutoMigrate19To20: AutoMigrationSpec
 
+    // 1.0.56 and earlier set auto_refresh_programmes = 1 on every Xtream
+    // subscription, which caused the EPG worker to re-download on every app
+    // launch (with ignoreCache=true) and spam the user with notifications.
+    // Clearing the flag here makes upgraded installs match the new behaviour.
+    val MIGRATION_22_23 = object : Migration(22, 23) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("UPDATE playlists SET auto_refresh_programmes = 0")
+        }
+    }
+
 }
