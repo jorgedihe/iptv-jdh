@@ -15,8 +15,6 @@ internal class DlnaController : ControlPoint.DiscoveryListener {
     private val _searching = MutableStateFlow(false)
     val searching = _searching.asStateFlow()
 
-    /** UDN of the device the user last asked us to cast to. Used by the UI to
-     *  highlight the active row and let the user disconnect with a second tap. */
     private val _connectedDeviceUdn = MutableStateFlow<String?>(null)
     val connectedDeviceUdn = _connectedDeviceUdn.asStateFlow()
 
@@ -64,7 +62,11 @@ internal class DlnaController : ControlPoint.DiscoveryListener {
     }
 
     fun play(device: Device, channel: Channel) {
-        val setUri = device.findAction(ACTION_SET_AV_TRANSPORT_URI) ?: return
+        val setUri = device.findAction(ACTION_SET_AV_TRANSPORT_URI) ?: run {
+            android.util.Log.w(TAG, "play: SetAVTransportURI action not found on " + device.friendlyName)
+            return
+        }
+        android.util.Log.i(TAG, "play -> " + device.friendlyName + " url=" + channel.url)
         setUri.invoke(
             argumentValues = mapOf(
                 INSTANCE_ID to DEFAULT_INSTANCE_ID,
@@ -72,15 +74,20 @@ internal class DlnaController : ControlPoint.DiscoveryListener {
                 CURRENT_URI_META_DATA to channel.toDidlLite()
             ),
             onResult = { result ->
+                if (result.containsKey("errorCode") || result.containsKey("UPnPError")) {
+                    android.util.Log.w(TAG, "SetAVTransportURI failed on " + device.friendlyName + ": " + result)
+                    return@invoke
+                }
                 device.findAction(ACTION_PLAY)?.invoke(
                     argumentValues = mapOf(
                         INSTANCE_ID to DEFAULT_INSTANCE_ID,
                         SPEED to DEFAULT_SPEED
                     ),
-                    onResult = {
-                        // Both calls accepted by the renderer — mark the device
-                        // as connected so the UI can highlight it / let the
-                        // user disconnect with a tap.
+                    onResult = { playResult ->
+                        if (playResult.containsKey("errorCode") || playResult.containsKey("UPnPError")) {
+                            android.util.Log.w(TAG, "Play action failed on " + device.friendlyName + ": " + playResult)
+                            return@invoke
+                        }
                         _connectedDeviceUdn.value = device.udn
                     }
                 )
@@ -108,12 +115,14 @@ internal class DlnaController : ControlPoint.DiscoveryListener {
 
     private fun Channel.toDidlLite(): String {
         val title = title.ifBlank { url }
-        val creator = category.ifBlank { "M3UAndroid" }
+        val creator = category.ifBlank { "IPTV JDH" }
+        val mime = inferMimeType(url)
+        val protocolInfo = "http-get:*:" + mime + ":" + DLNA_FLAGS
         return buildString {
-            append("""<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" """)
-            append("""xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" """)
-            append("""xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">""")
-            append("""<item id="0" parentID="0" restricted="1">""")
+            append("<DIDL-Lite xmlns:dc=\"http://purl.org/dc/elements/1.1/\" ")
+            append("xmlns:upnp=\"urn:schemas-upnp-org:metadata-1-0/upnp/\" ")
+            append("xmlns=\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\">")
+            append("<item id=\"0\" parentID=\"0\" restricted=\"1\">")
             append("<dc:title>")
             append(title.escapeXml())
             append("</dc:title>")
@@ -126,11 +135,32 @@ internal class DlnaController : ControlPoint.DiscoveryListener {
                 append(it.escapeXml())
                 append("</upnp:albumArtURI>")
             }
-            append("""<res protocolInfo="http-get:*:*:*">""")
+            append("<res protocolInfo=\"")
+            append(protocolInfo.escapeXml())
+            append("\">")
             append(url.escapeXml())
             append("</res>")
             append("</item>")
             append("</DIDL-Lite>")
+        }
+    }
+
+    private fun inferMimeType(url: String): String {
+        val cleanPath = url.substringBefore('?').substringBefore('#')
+        val ext = cleanPath.substringAfterLast('.', "").lowercase()
+        return when (ext) {
+            "m3u8" -> "application/vnd.apple.mpegurl"
+            "mpd" -> "application/dash+xml"
+            "ts", "m2ts" -> "video/mp2t"
+            "mp4", "m4v" -> "video/mp4"
+            "mkv" -> "video/x-matroska"
+            "avi" -> "video/x-msvideo"
+            "mov" -> "video/quicktime"
+            "webm" -> "video/webm"
+            "flv" -> "video/x-flv"
+            "wmv" -> "video/x-ms-wmv"
+            "3gp" -> "video/3gpp"
+            else -> "video/mpeg"
         }
     }
 
@@ -150,6 +180,7 @@ internal class DlnaController : ControlPoint.DiscoveryListener {
     }
 
     companion object {
+        private const val TAG = "DlnaController"
         private const val SEARCH_TARGET_MEDIA_RENDERER = "urn:schemas-upnp-org:device:MediaRenderer:1"
 
         private const val ACTION_SET_AV_TRANSPORT_URI = "SetAVTransportURI"
@@ -162,5 +193,8 @@ internal class DlnaController : ControlPoint.DiscoveryListener {
         private const val CURRENT_URI_META_DATA = "CurrentURIMetaData"
         private const val SPEED = "Speed"
         private const val DEFAULT_SPEED = "1"
+
+        private const val DLNA_FLAGS =
+            "DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"
     }
 }
