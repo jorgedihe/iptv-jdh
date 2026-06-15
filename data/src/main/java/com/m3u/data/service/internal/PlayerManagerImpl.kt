@@ -59,6 +59,8 @@ import com.m3u.data.database.model.Channel
 import com.m3u.data.database.model.Playlist
 import com.m3u.data.database.model.copyXtreamEpisode
 import com.m3u.data.database.model.copyXtreamSeries
+import com.m3u.data.database.model.isSeries
+import com.m3u.data.database.model.isVod
 import com.m3u.data.repository.channel.ChannelRepository
 import com.m3u.data.repository.playlist.PlaylistRepository
 import com.m3u.data.service.MediaCommand
@@ -255,10 +257,14 @@ class PlayerManagerImpl @Inject constructor(
         }
 
         timber.d("tryPlay, mimetype: $mimeType, url: $url, user-agent: $userAgent, rtmp: $rtmp")
+        // Disk cache only makes sense for seekable VOD / series. Live streams
+        // and rare formats (HLS live edge, RTSP) skip it.
+        val pl = playlist.value
+        val useCache = pl != null && (pl.isVod || pl.isSeries)
         val dataSourceFactory = if (rtmp) {
             RtmpDataSource.Factory()
         } else {
-            createHttpDataSourceFactory(userAgent)
+            createHttpDataSourceFactory(userAgent, useCache = useCache)
         }
         // BUGFIX: these two are bit flags (1 and 2). Using `and` produced 0
         // and silently disabled BOTH flags, leaving the MPEG-TS extractor
@@ -475,22 +481,38 @@ class PlayerManagerImpl @Inject constructor(
         return DefaultTrackSelector(context).apply {
             setParameters(
                 buildUponParameters()
-                    .setForceHighestSupportedBitrate(true)
+                    // Was: setForceHighestSupportedBitrate(true). On unstable
+                    // Wi-Fi that produced 1–3 s freezes when the link briefly
+                    // dipped below the max bitrate. Leaving the ABR algorithm
+                    // free to pick a lower rendition keeps playback smooth at
+                    // the cost of a momentary quality dip.
                     .setTunnelingEnabled(tunneling)
             )
         }
     }
 
-    private fun createHttpDataSourceFactory(userAgent: String?): DataSource.Factory {
+    /**
+     * Live channels are streamed (no useful caching) but VOD / series benefit
+     * from a disk cache: seeking back inside an episode is instant, and brief
+     * network blips re-read from the cache instead of refetching. We wrap the
+     * OkHttp upstream in a CacheDataSource when the playlist source supports
+     * seek (VOD/series); live and other never-seekable sources keep the bare
+     * upstream so we don't waste cache space on transient bytes.
+     */
+    private fun createHttpDataSourceFactory(
+        userAgent: String?,
+        useCache: Boolean = false
+    ): DataSource.Factory {
         val upstream = OkHttpDataSource.Factory(okHttpClient)
             .setUserAgent(userAgent)
-//        return if (cache) {
-//            CacheDataSource.Factory()
-//                .setUpstreamDataSourceFactory(upstream)
-//                .setCache(cache)
-//                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-//        }
-        return upstream
+        return if (useCache) {
+            androidx.media3.datasource.cache.CacheDataSource.Factory()
+                .setUpstreamDataSourceFactory(upstream)
+                .setCache(cache)
+                .setFlags(androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        } else {
+            upstream
+        }
     }
 
     override fun onVideoSizeChanged(videoSize: VideoSize) {

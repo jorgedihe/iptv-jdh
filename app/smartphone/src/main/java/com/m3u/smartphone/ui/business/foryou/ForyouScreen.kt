@@ -97,6 +97,8 @@ import com.m3u.data.database.model.isVod
 import com.m3u.data.service.MediaCommand
 import com.m3u.i18n.R.string
 import com.m3u.smartphone.ui.business.foryou.components.HeadlineBackground
+import com.m3u.smartphone.ui.business.foryou.components.HeroContinueWatching
+import com.m3u.smartphone.ui.business.foryou.components.OnboardingWizard
 import com.m3u.smartphone.ui.business.foryou.components.PlaylistGallery
 import com.m3u.smartphone.ui.business.foryou.components.recommend.RecommendGallery
 import com.m3u.smartphone.ui.business.playlist.components.ChannelItem
@@ -362,7 +364,7 @@ private fun ForyouScreen(
         HeadlineBackground()
 
         if (activeProvider == null) {
-            EmptyProviderState(
+            OnboardingWizard(
                 onAddProvider = navigateToSettingPlaylistManagement,
                 modifier = Modifier.fillMaxSize()
             )
@@ -397,7 +399,24 @@ private fun ForyouScreen(
                         viewMode = viewMode,
                         onCycleViewMode = { viewModePref = viewMode.next().toInt() }
                     )
-                    if (specs.isNotEmpty()) {
+                    // Newest "continue watching" item becomes a full-bleed
+                    // hero card at the top of the screen (Netflix-style). The
+                    // remaining items (if any) keep going through the small
+                    // RecommendGallery carousel below so nothing is lost.
+                    val heroSpec = specs.firstOrNull { it is Recommend.CwSpec } as? Recommend.CwSpec
+                    val tailSpecs = if (heroSpec != null) {
+                        specs.filterNot { it === heroSpec }
+                    } else specs
+                    if (heroSpec != null) {
+                        HeroContinueWatching(
+                            channel = heroSpec.channel,
+                            positionMs = heroSpec.position,
+                            onPlay = { onPlayChannel(it) },
+                            onInfo = { onPlayChannel(it) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    if (tailSpecs.isNotEmpty()) {
                         Text(
                             text = stringResource(string.ui_section_continue_watching),
                             style = MaterialTheme.typography.labelMedium,
@@ -405,10 +424,10 @@ private fun ForyouScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp)
+                                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp)
                         )
                         RecommendGallery(
-                            specs = specs,
+                            specs = tailSpecs,
                             navigateToPlaylist = navigateToPlaylist,
                             onPlayChannel = onPlayChannel,
                             onSpecChanged = { spec -> headlineSpec = spec },
