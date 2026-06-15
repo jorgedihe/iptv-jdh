@@ -260,8 +260,13 @@ class PlayerManagerImpl @Inject constructor(
         } else {
             createHttpDataSourceFactory(userAgent)
         }
+        // BUGFIX: these two are bit flags (1 and 2). Using `and` produced 0
+        // and silently disabled BOTH flags, leaving the MPEG-TS extractor
+        // unable to align on access units. Result: live channels would
+        // randomly freeze and "jump forward" when the decoder resynced.
+        // The correct combinator is bitwise OR.
         val extractorsFactory = DefaultExtractorsFactory().setTsExtractorFlags(
-            FLAG_ALLOW_NON_IDR_KEYFRAMES and FLAG_DETECT_ACCESS_UNITS
+            FLAG_ALLOW_NON_IDR_KEYFRAMES or FLAG_DETECT_ACCESS_UNITS
         )
         extractor = MediaExtractorCompat(extractorsFactory, dataSourceFactory)
         val mediaSourceFactory = when (mimeType) {
@@ -436,6 +441,21 @@ class PlayerManagerImpl @Inject constructor(
         .setRenderersFactory(renderersFactory)
         .setTrackSelector(createTrackSelector(tunneling))
         .setHandleAudioBecomingNoisy(true)
+        // Custom LoadControl tuned for live IPTV: doubles the playback buffer
+        // from 2.5s to 5s and the rebuffer cushion from 5s to 10s so short
+        // (500–1500 ms) network hiccups absorb in the buffer instead of
+        // showing as a freeze. Min/max kept around defaults so memory and
+        // channel-switch latency stay reasonable.
+        .setLoadControl(
+            androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    /* minBufferMs */ 15_000,
+                    /* maxBufferMs */ 60_000,
+                    /* bufferForPlaybackMs */ 5_000,
+                    /* bufferForPlaybackAfterRebufferMs */ 10_000
+                )
+                .build()
+        )
         .build()
         .apply {
             val attributes = AudioAttributes.Builder()
@@ -528,7 +548,22 @@ class PlayerManagerImpl @Inject constructor(
                 }
             }
 
-            PlaybackException.ERROR_CODE_IO_UNSPECIFIED -> {}
+            PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+            PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE -> {
+                // Transient network hiccups on live IPTV streams: instead of
+                // surfacing the error and stopping playback, re-prepare the
+                // player so it reconnects to the upstream within ~1 s. This
+                // recovers cleanly from short Wi-Fi blips that would
+                // otherwise show as "Cargando…" stuck on screen.
+                timber.w("Transient IO error (${PlaybackException.getErrorCodeName(errorCode)}), auto-reconnecting")
+                player.value?.let {
+                    it.seekToDefaultPosition()
+                    it.prepare()
+                }
+            }
 
             else -> {
                 if (exception != null) {
