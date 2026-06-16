@@ -447,19 +447,28 @@ class PlayerManagerImpl @Inject constructor(
         .setRenderersFactory(renderersFactory)
         .setTrackSelector(createTrackSelector(tunneling))
         .setHandleAudioBecomingNoisy(true)
-        // Custom LoadControl tuned for live IPTV: doubles the playback buffer
-        // from 2.5s to 5s and the rebuffer cushion from 5s to 10s so short
-        // (500–1500 ms) network hiccups absorb in the buffer instead of
-        // showing as a freeze. Min/max kept around defaults so memory and
-        // channel-switch latency stay reasonable.
+        // LoadControl tuned aggressively for live IPTV MPEG-TS streams (where
+        // ABR cannot rescale quality, only buffer absorbs bandwidth dips):
+        //  - maxBufferMs 240 s lets the player stockpile up to 4 min when the
+        //    Wi-Fi is fast, so a sustained dip below the stream bitrate can
+        //    consume that reserve without ever pausing.
+        //  - minBufferMs 60 s keeps the playback cursor far from the head of
+        //    the buffer so small jitter never empties it.
+        //  - bufferForPlaybackAfterRebufferMs 3 s: if we DO rebuffer, resume
+        //    fast (3 s) instead of forcing a long 10 s wait that's visible
+        //    as a big "Cargando…" overlay.
+        //  - prioritizeTimeOverSizeThresholds(true) makes the buffer policy
+        //    measure DURATION instead of bytes, so high-bitrate channels
+        //    (La Sexta HD ~5 Mbps) don't trigger early back-pressure.
         .setLoadControl(
             androidx.media3.exoplayer.DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
-                    /* minBufferMs */ 15_000,
-                    /* maxBufferMs */ 60_000,
-                    /* bufferForPlaybackMs */ 5_000,
-                    /* bufferForPlaybackAfterRebufferMs */ 10_000
+                    /* minBufferMs */ 60_000,
+                    /* maxBufferMs */ 240_000,
+                    /* bufferForPlaybackMs */ 6_000,
+                    /* bufferForPlaybackAfterRebufferMs */ 3_000
                 )
+                .setPrioritizeTimeOverSizeThresholds(true)
                 .build()
         )
         .build()

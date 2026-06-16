@@ -588,7 +588,20 @@ private fun ChannelPlayer(
                 playState == Player.STATE_IDLE
         val hasError = playerState.playerError != null
         val isVodPreview = (isSeriesPlaylist || playlist?.isVod == true) && isPanelExpanded
-        if (isLoading && !hasError && !isVodPreview) {
+        // Debounce the loading overlay: very short buffering events (<700 ms)
+        // are invisible UX-wise — flashing a spinner for two frames makes a
+        // smooth stream feel worse than it is. We only show "Cargando…" if
+        // buffering persists past the debounce window.
+        var showLoadingOverlay by remember { mutableStateOf(false) }
+        LaunchedEffect(isLoading) {
+            if (isLoading) {
+                kotlinx.coroutines.delay(700)
+                showLoadingOverlay = true
+            } else {
+                showLoadingOverlay = false
+            }
+        }
+        if (showLoadingOverlay && !hasError && !isVodPreview) {
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
