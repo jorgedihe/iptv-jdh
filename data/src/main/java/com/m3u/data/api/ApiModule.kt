@@ -54,6 +54,16 @@ internal object ApiModule {
     @OkhttpClient(false)
     fun provideOkhttpClient(): OkHttpClient {
         return OkHttpClient.Builder()
+            // Generous timeouts so transient Wi-Fi jitter on the device side
+            // (microoutages of a few seconds) does not collapse the data
+            // pipe feeding ExoPlayer. Defaults are 10 s read / 10 s connect /
+            // 10 s write which is too tight for IPTV over patchy home Wi-Fi.
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            // Reuse keep-alive sockets aggressively so a jittery hop doesn't
+            // trigger SSL re-handshake mid-stream.
+            .retryOnConnectionFailure(true)
             .authenticator(Authenticator.JAVA_NET_AUTHENTICATOR)
             .addInterceptor { chain ->
                 val request = chain.request()
