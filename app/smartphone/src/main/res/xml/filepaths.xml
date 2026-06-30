@@ -1,18 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Restricted on purpose: only the app's own private `files-path/shared/`
+    directory is exposed via FileProvider. Earlier versions exposed the
+    cache and external storage roots (path="."), which Google Play flags
+    as an over-broad attack surface and we have no actual consumer for it
+    anyway (no Kotlin call site uses FileProvider.getUriForFile).
+-->
 <paths>
-    <external-path
-        name="external"
-        path="." />
-    <external-files-path
-        name="external_files"
-        path="." />
-    <cache-path
-        name="cache"
-        path="." />
-    <external-cache-path
-        name="external_cache"
-        path="." />
     <files-path
-        name="files"
-        path="." />
+        name="shared"
+        path="shared/" />
 </paths>

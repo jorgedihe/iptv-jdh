@@ -22,8 +22,6 @@ import com.m3u.core.foundation.architecture.preferences.flowOf
 import com.m3u.core.foundation.architecture.preferences.set
 import com.m3u.core.foundation.util.basic.startWithHttpScheme
 import com.m3u.data.api.TvApiDelegate
-import com.m3u.data.codec.CodecPackInstallResult
-import com.m3u.data.codec.CodecPackRepository
 import com.m3u.data.database.dao.ColorSchemeDao
 import com.m3u.data.database.example.ColorSchemeExample
 import com.m3u.data.database.model.Channel
@@ -65,17 +63,15 @@ class SettingViewModel @Inject constructor(
     private val messager: Messager,
     private val tvRepository: TvRepository,
     private val tvApi: TvApiDelegate,
-    private val codecPackRepository: CodecPackRepository,
     publisher: Publisher,
     // FIXME: do not use dao in viewmodel
     private val colorSchemeDao: ColorSchemeDao,
 ) : ViewModel() {
-    private val _codecPackState = MutableStateFlow(codecPackRepository.toPendingState())
-    val codecPackState: StateFlow<CodecPackState> = _codecPackState
-
-    init {
-        refreshCodecPack()
-    }
+    // Codec pack feature removed for Google Play compliance — no runtime
+    // code download. Existing state field kept disabled for any consumer
+    // that still observes it (none ship as of v1.0.65).
+    val codecPackState: StateFlow<CodecPackState> =
+        MutableStateFlow(CodecPackState(enabled = false, installed = false))
 
     val epgs: StateFlow<List<Playlist>> = playlistRepository
         .observeAllEpgs()
@@ -286,58 +282,8 @@ class SettingViewModel @Inject constructor(
         }
     }
 
-    fun refreshCodecPack() {
-        viewModelScope.launch(Dispatchers.IO) {
-            _codecPackState.value = codecPackRepository.toState()
-        }
-    }
-
-    fun installCodecPack() {
-        if (!_codecPackState.value.enabled) return
-        if (_codecPackState.value.installing) return
-        _codecPackState.value = _codecPackState.value.copy(installing = true, error = null)
-        viewModelScope.launch(Dispatchers.IO) {
-            runCatching {
-                codecPackRepository.installFromDefaultSnapshot()
-            }.fold(
-                onSuccess = { result ->
-                    _codecPackState.value = codecPackRepository.toState().copy(
-                        error = when (result) {
-                            is CodecPackInstallResult.UnsupportedAbi -> result.supportedAbis.joinToString()
-                            else -> null
-                        }
-                    )
-                },
-                onFailure = { error ->
-                    _codecPackState.value = codecPackRepository.toState().copy(error = error.message)
-                }
-            )
-        }
-    }
-
-    fun deleteCodecPack() {
-        viewModelScope.launch(Dispatchers.IO) {
-            codecPackRepository.deleteInstalledPack()
-            _codecPackState.value = codecPackRepository.toState()
-        }
-    }
-
-    private fun CodecPackRepository.toState(): CodecPackState {
-        return CodecPackState(
-            packId = packId,
-            enabled = enabled,
-            abi = currentAbi,
-            installed = isInstalled()
-        )
-    }
-
-    private fun CodecPackRepository.toPendingState(): CodecPackState {
-        return CodecPackState(
-            packId = packId,
-            enabled = enabled,
-            abi = currentAbi
-        )
-    }
+    // refreshCodecPack / installCodecPack / deleteCodecPack removed in v1.0.65
+    // along with the runtime download path (Google Play policy).
 
     val colorSchemes: StateFlow<List<ColorScheme>> = combine(
         colorSchemeDao.observeAll().catch { emit(emptyList()) },

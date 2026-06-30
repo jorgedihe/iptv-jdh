@@ -21,7 +21,6 @@ internal fun PreferencesFragment(
     navigateToPlaylistManagement: () -> Unit,
     navigateToThemeSelector: () -> Unit,
     navigateToOptional: () -> Unit,
-    navigateToCodecPack: () -> Unit,
     navigateToAbout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -38,8 +37,6 @@ internal fun PreferencesFragment(
                 navigateToPlaylistManagement = navigateToPlaylistManagement,
                 navigateToThemeSelector = navigateToThemeSelector,
                 navigateToOptional = navigateToOptional,
-                codecPackEnabled = codecPackEnabled,
-                navigateToCodecPack = navigateToCodecPack,
                 navigateToAbout = navigateToAbout
             )
         }

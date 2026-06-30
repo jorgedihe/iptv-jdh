@@ -114,9 +114,5 @@ sealed interface SettingDestination : Parcelable {
 
     @Immutable
     @Parcelize
-    data object CodecPack : SettingDestination
-
-    @Immutable
-    @Parcelize
     data object About : SettingDestination
 }

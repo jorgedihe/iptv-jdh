@@ -23,8 +23,6 @@ internal fun RegularPreferences(
     navigateToPlaylistManagement: () -> Unit,
     navigateToThemeSelector: () -> Unit,
     navigateToOptional: () -> Unit,
-    codecPackEnabled: Boolean,
-    navigateToCodecPack: () -> Unit,
     navigateToAbout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
