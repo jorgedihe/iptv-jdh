@@ -18,7 +18,6 @@ import androidx.media3.common.VideoSize
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.datasource.rtmp.RtmpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.MediaExtractorCompat
 import androidx.media3.exoplayer.RenderersFactory
@@ -242,7 +241,10 @@ class PlayerManagerImpl @Inject constructor(
         licenseKey: String = channel.value?.licenseKey.orEmpty(),
         applyContinueWatching: Boolean
     ) {
-        val rtmp: Boolean = Url(url).protocol.name == "rtmp"
+        // RTMP datasource module dropped in v1.0.66 (16 KB page-size policy).
+        // If a user-supplied URL is rtmp://, fall through to the HTTP factory;
+        // ExoPlayer will fail to play but won't crash — and IPTV providers
+        // virtually never serve RTMP anyway (only HLS / MPEG-TS HTTP / RTSP).
         val tunneling = settings[PreferencesKeys.TUNNELING]
 
         val mimeType = when (val chain = chain) {
@@ -256,16 +258,12 @@ class PlayerManagerImpl @Inject constructor(
             is MimetypeChain.Unsupported -> throw UnsupportedOperationException()
         }
 
-        timber.d("tryPlay, mimetype: $mimeType, url: $url, user-agent: $userAgent, rtmp: $rtmp")
+        timber.d("tryPlay, mimetype: $mimeType, url: $url, user-agent: $userAgent")
         // Disk cache only makes sense for seekable VOD / series. Live streams
         // and rare formats (HLS live edge, RTSP) skip it.
         val pl = playlist.value
         val useCache = pl != null && (pl.isVod || pl.isSeries)
-        val dataSourceFactory = if (rtmp) {
-            RtmpDataSource.Factory()
-        } else {
-            createHttpDataSourceFactory(userAgent, useCache = useCache)
-        }
+        val dataSourceFactory = createHttpDataSourceFactory(userAgent, useCache = useCache)
         // BUGFIX: these two are bit flags (1 and 2). Using `and` produced 0
         // and silently disabled BOTH flags, leaving the MPEG-TS extractor
         // unable to align on access units. Result: live channels would

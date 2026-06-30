@@ -63,7 +63,10 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer.workmanager)
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.media3.container)
-    implementation(libs.androidx.media3.datasource.rtmp)
+    // media3-datasource-rtmp removed in v1.0.66: its bundled librtmp-jni.so
+    // is 4 KB-aligned and Google Play now requires 16 KB page-size support
+    // for Android 15+. IPTV streams use HLS / progressive HTTP / RTSP, not
+    // RTMP (a screen-streaming protocol), so nothing user-visible breaks.
     implementation(libs.androidx.media3.datasource.okhttp)
     implementation(libs.androidx.media3.extractor)
     implementation(libs.androidx.media3.common.ktx)

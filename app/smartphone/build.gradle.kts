@@ -36,8 +36,8 @@ android {
         applicationId = "net.jorgedihe.iptv"
         minSdk = 26
         targetSdk = 35
-        versionCode = 67
-        versionName = "1.0.65"
+        versionCode = 68
+        versionName = "1.0.66"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testInstrumentationRunnerArguments["m3uMockServerUrl"] = m3uMockServerUrl.get()
@@ -99,6 +99,13 @@ android {
     }
     packaging {
         resources.excludes += "META-INF/**"
+        // Required for Android 15+ devices that use 16 KB memory pages.
+        // useLegacyPackaging=false keeps .so files uncompressed inside the
+        // APK so their own ELF segment alignment (must be ≥16 KB) is what
+        // the loader sees, instead of zip-compression masking it.
+        jniLibs {
+            useLegacyPackaging = false
+        }
     }
     applicationVariants.all {
         outputs
