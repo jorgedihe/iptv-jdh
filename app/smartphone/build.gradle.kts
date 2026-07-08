@@ -36,8 +36,8 @@ android {
         applicationId = "net.jorgedihe.iptv"
         minSdk = 26
         targetSdk = 35
-        versionCode = 71
-        versionName = "1.0.69"
+        versionCode = 72
+        versionName = "1.0.70"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testInstrumentationRunnerArguments["m3uMockServerUrl"] = m3uMockServerUrl.get()
@@ -64,6 +64,14 @@ android {
             )
         }
     }
+    // Bundle native debug symbols into the AAB so Play Console's crash /
+    // ANR reports show human-readable stack frames instead of hex offsets,
+    // and the "missing symbols" upload warning goes away.
+    buildTypes.all {
+        (this as? com.android.build.api.dsl.ApplicationBuildType)
+            ?.ndk?.debugSymbolLevel = "FULL"
+    }
+
     aaptOptions.cruncherEnabled = false
     splits {
         abi {

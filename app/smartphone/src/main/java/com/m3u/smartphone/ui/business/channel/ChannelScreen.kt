@@ -276,17 +276,32 @@ fun ChannelRoute(
         currentPaddings.bottom.takeOrElse { 0.dp }.takeIf { isPanelExpanded } ?: 0.dp
     )
 
+    // BUGFIX (v1.0.70): if the stream has not reported a size yet (very common
+    // in the first ~200 ms of channel switch) source.width() / source.height()
+    // are 0. That produced sourceAspectRatio = NaN / 0 / Infinity and
+    // aspectRatio ended up as 0 or NaN or Infinity — which downstream tripped
+    // Constraints() with "maxWidth must be >= minWidth". The whole app went
+    // down with an IllegalArgumentException while the user was watching a
+    // channel in landscape fullscreen. Now we short-circuit to the default
+    // aspect ratio whenever any of the inputs is non-positive.
     val aspectRatio = with(density) {
         val source = playerState.videoSize
-        val scaledSourceWidth = source.width()
-        val scaledSourceHeight = source.height()
-        val sourceAspectRatio = (scaledSourceWidth * 1f / scaledSourceHeight)
-        if (sourceAspectRatio.isNaN()) {
+        val sw = source.width().toFloat()
+        val sh = source.height().toFloat()
+        val containerW = windowInfo.containerSize.width
+        if (sw <= 0f || sh <= 0f || containerW <= 0) {
             PullPanelLayoutDefaults.AspectRatio
         } else {
-            val destWidth = windowInfo.containerSize.width.toDp()
+            val sourceAspectRatio = sw / sh
+            val destWidth = containerW.toDp()
             val destHeight = destWidth / sourceAspectRatio
-            (destWidth * 1f / (destHeight + topPadding + bottomPadding))
+            val denom = destHeight + topPadding + bottomPadding
+            if (denom.value <= 0f) {
+                PullPanelLayoutDefaults.AspectRatio
+            } else {
+                (destWidth * 1f / denom).takeIf { it.isFinite() && it > 0f }
+                    ?: PullPanelLayoutDefaults.AspectRatio
+            }
         }
     }
     val onAlignment = { size: IntSize, space: IntSize ->

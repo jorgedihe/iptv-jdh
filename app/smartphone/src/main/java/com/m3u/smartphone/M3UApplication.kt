@@ -43,7 +43,10 @@ class M3UApplication : Application(), Configuration.Provider {
                 channelName = getString(string.crash_notification_channel_name)
             }
             mailSender {
-                mailTo = "oxyroid@outlook.com"
+                // Was "oxyroid@outlook.com" (upstream M3UAndroid author).
+                // Redirected to the IPTV JDH maintainer so crash reports
+                // actually reach someone who can act on them.
+                mailTo = "contacto@jorgedihe.net"
                 reportAsFile = true
                 reportFileName = "Crash.txt"
             }
