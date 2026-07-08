@@ -62,15 +62,24 @@ class SubscriptionWorker @AssistedInject constructor(
         dataSource ?: return@coroutineScope Result.failure()
         createChannel()
         coroutineContext[Job]?.invokeOnCompletion { cause ->
-            when (cause) {
-                null -> {}
-                is CancellationException -> {
+            when {
+                cause == null -> {}
+                cause is CancellationException -> {
+                    notificationManager.cancel(notificationId)
+                }
+
+                // Provider-side transient failure (server returned an HTML
+                // error page instead of JSON, or the network dropped): don't
+                // spam the notification shade with a red banner every time.
+                // The user already has cached channels, so silently
+                // dismiss and let the next natural refresh recover.
+                isProviderIssue(cause) -> {
                     notificationManager.cancel(notificationId)
                 }
 
                 else -> {
                     createN10nBuilder()
-                        .setContentText(cause.localizedMessage.orEmpty())
+                        .setContentText(friendlyErrorMessage(cause))
                         .setActions(retryAction)
                         .setColor(Color.RED)
                         .buildThenNotify()
@@ -131,7 +140,7 @@ class SubscriptionWorker @AssistedInject constructor(
                     Result.success()
                 } catch (e: Exception) {
                     createN10nBuilder()
-                        .setContentText(e.localizedMessage.orEmpty())
+                        .setContentText(friendlyErrorMessage(e))
                         .setActions(retryAction)
                         .setColor(Color.RED)
                         .buildThenNotify()
@@ -172,7 +181,7 @@ class SubscriptionWorker @AssistedInject constructor(
                         Result.success()
                     } catch (e: Exception) {
                         createN10nBuilder()
-                            .setContentText(e.localizedMessage.orEmpty())
+                            .setContentText(friendlyErrorMessage(e))
                             .setActions(retryAction)
                             .setColor(Color.RED)
                             .buildThenNotify()
@@ -208,12 +217,103 @@ class SubscriptionWorker @AssistedInject constructor(
     private fun createN10nBuilder(): Notification.Builder =
         Notification.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.round_file_download_24)
+            // Sanitised title: never leak the raw URL (which for Xtream carries
+            // the user's credentials in the query string) into the OS notification
+            // shade or Samsung's notification history.
             .setContentTitle(
                 when (dataSource) {
-                    DataSource.EPG -> epgPlaylistUrl
-                    else -> title
+                    DataSource.EPG -> sanitizedTitle(epgPlaylistUrl)
+                    else -> sanitizedTitle(title)
                 }
             )
+
+    /**
+     * Translate the many low-level failure modes of the Xtream / M3U / EPG
+     * pipeline into a single short human sentence. The original code dumped
+     * `throwable.localizedMessage` straight into the notification, which
+     * exposed XML parser stacktraces like
+     *   "expected: /hr read: body (position:END_TAG </body ...)"
+     * to non-technical users.
+     */
+    private fun friendlyErrorMessage(cause: Throwable): String {
+        val raw = cause.message.orEmpty()
+        val className = cause::class.java.simpleName
+        return when {
+            // The Xtream endpoint returned an HTML error page instead of JSON —
+            // most common cause of the "expected: /hr" notification.
+            raw.contains("hr read", ignoreCase = true) ||
+                    raw.contains("END_TAG", ignoreCase = true) ||
+                    raw.contains("<html", ignoreCase = true) ||
+                    raw.contains("<body", ignoreCase = true) ->
+                "El proveedor no responde correctamente. Vuelve a intentarlo más tarde."
+
+            // Serialization / JSON failures — server returned malformed body.
+            className.contains("Serialization", ignoreCase = true) ||
+                    raw.contains("Unexpected JSON", ignoreCase = true) ||
+                    raw.contains("JsonDecodingException", ignoreCase = true) ->
+                "Respuesta del servidor no válida. Reintenta más tarde."
+
+            // Network layer.
+            className.contains("UnknownHost", ignoreCase = true) ||
+                    raw.contains("Unable to resolve host", ignoreCase = true) ->
+                "Sin conexión con el proveedor. Comprueba tu red."
+
+            className.contains("SocketTimeout", ignoreCase = true) ||
+                    raw.contains("timeout", ignoreCase = true) ->
+                "El proveedor tarda demasiado en responder."
+
+            className.contains("SSL", ignoreCase = true) ||
+                    className.contains("Certificate", ignoreCase = true) ->
+                "Problema de conexión segura con el proveedor."
+
+            // HTTP status codes typically leak through as "code=458" etc.
+            raw.contains("code=4", ignoreCase = false) ||
+                    raw.contains("code=5", ignoreCase = false) ->
+                "El proveedor devolvió un error. Reintenta más tarde."
+
+            else ->
+                "No se pudo actualizar la lista. Vuelve a intentarlo."
+        }
+    }
+
+    /**
+     * True when the failure was clearly on the provider's side (transient
+     * HTML error page, malformed JSON, timeout, HTTP 4xx/5xx). We use this
+     * to silently swallow those errors instead of spamming a red banner
+     * every time the Xtream endpoint hiccups.
+     */
+    private fun isProviderIssue(cause: Throwable): Boolean {
+        val raw = cause.message.orEmpty()
+        val className = cause::class.java.simpleName
+        return raw.contains("hr read", ignoreCase = true) ||
+                raw.contains("END_TAG", ignoreCase = true) ||
+                raw.contains("<html", ignoreCase = true) ||
+                raw.contains("<body", ignoreCase = true) ||
+                className.contains("Serialization", ignoreCase = true) ||
+                raw.contains("Unexpected JSON", ignoreCase = true) ||
+                raw.contains("JsonDecodingException", ignoreCase = true) ||
+                className.contains("SocketTimeout", ignoreCase = true) ||
+                raw.contains("timeout", ignoreCase = true) ||
+                raw.contains("code=4", ignoreCase = false) ||
+                raw.contains("code=5", ignoreCase = false)
+    }
+
+    /**
+     * Strip credentials from anything that might be a URL. If the string looks
+     * like a normal playlist title we return it unchanged.
+     */
+    private fun sanitizedTitle(raw: String?): String {
+        val fallback = "IPTV JDH"
+        val value = raw?.takeIf { it.isNotBlank() } ?: return fallback
+        // Detect obvious URL-shaped inputs.
+        if (!value.contains("://") && !value.contains("player_api.php")) return value
+        return runCatching {
+            val uri = android.net.Uri.parse(value)
+            val host = uri.host?.takeIf { it.isNotBlank() } ?: return@runCatching fallback
+            // e.g. "IPTV JDH · es.iptvharmony.co"
+            "IPTV JDH · $host"
+        }.getOrDefault(fallback)
+    }
 
     private fun findCancelActionTitle() =
         context.getString(string.data_worker_subscription_action_cancel)
