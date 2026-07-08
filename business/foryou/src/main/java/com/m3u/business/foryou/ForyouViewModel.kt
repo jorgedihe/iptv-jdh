@@ -108,9 +108,19 @@ class ForyouViewModel @Inject constructor(
     }
 
     init {
-        // For the active provider, kick off (1) channel sync for any Xtream playlists
-        // that have no channels yet (recovery from incomplete subscribes) and
-        // (2) the EPG XMLTV download. Both run in background — no manual refresh needed.
+        // For the active provider, kick off channel sync ONLY for Xtream
+        // playlists that have zero channels stored — that's a recovery path
+        // from an incomplete initial subscribe and it can't run on demand
+        // because the user would just see an empty list.
+        //
+        // NOTE: the previous version of this block also auto-fired an EPG
+        // XMLTV download on every provider change (via SubscriptionWorker.epg).
+        // That silently hit the Xtream endpoint in the background even while
+        // the user was watching a channel; if the provider hiccuped and
+        // returned an HTML error page, the app popped a "el proveedor no
+        // responde" notification on top of playback. Removed. EPG now only
+        // refreshes when the user opens the EPG screen or pulls to refresh
+        // the list.
         viewModelScope.launch {
             var lastProviderKey: String? = null
             activeProvider.collect { provider ->
@@ -118,21 +128,11 @@ class ForyouViewModel @Inject constructor(
                 if (provider.key == lastProviderKey) return@collect
                 lastProviderKey = provider.key
 
-                // (1) Re-subscribe each playlist if it has zero channels stored.
                 listOfNotNull(provider.live, provider.vod, provider.series).forEach { pl ->
                     val channelCount = channelRepository.getByPlaylistUrl(pl.url).size
                     if (channelCount == 0) {
                         runCatching { playlistRepository.refresh(pl.url) }
                     }
-                }
-
-                // (2) EPG XMLTV download.
-                provider.live?.url?.let { url ->
-                    com.m3u.data.worker.SubscriptionWorker.epg(
-                        workManager = workManager,
-                        playlistUrl = url,
-                        ignoreCache = false
-                    )
                 }
             }
         }
