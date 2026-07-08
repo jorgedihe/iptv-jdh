@@ -10,7 +10,6 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.map as pagingMap
-import androidx.work.WorkManager
 import com.m3u.business.playlist.ChannelWithProgramme
 import com.m3u.data.api.TvApiDelegate
 import com.m3u.data.repository.channel.ChannelRepository
@@ -19,7 +18,6 @@ import com.m3u.data.repository.tv.ConnectionToTvValue
 import com.m3u.data.repository.tv.TvRepository
 import com.m3u.data.tv.model.RemoteDirection
 import com.m3u.data.tv.model.TvInfo
-import com.m3u.data.worker.SubscriptionWorker
 import com.m3u.smartphone.ui.common.connect.RemoteControlSheetValue
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -37,7 +35,6 @@ import javax.inject.Inject
 class AppViewModel @Inject constructor(
     private val playlistRepository: PlaylistRepository,
     private val channelRepository: ChannelRepository,
-    private val workManager: WorkManager,
     private val tvRepository: TvRepository,
     private val tvApi: TvApiDelegate,
 ) : ViewModel() {
@@ -67,18 +64,14 @@ class AppViewModel @Inject constructor(
         }
 
     var searchQuery = mutableStateOf("")
-    private fun refreshProgrammes() {
-        viewModelScope.launch {
-            val playlists = playlistRepository.getAllAutoRefresh()
-            playlists.forEach { playlist ->
-                SubscriptionWorker.epg(
-                    workManager = workManager,
-                    playlistUrl = playlist.url,
-                    ignoreCache = true
-                )
-            }
-        }
-    }
+
+    // NOTE: previously this view-model auto-fired an EPG refresh for every
+    // playlist flagged auto_refresh_programmes=1 on every init(), which meant
+    // every config change (rotation, theme, Wi-Fi swap) re-triggered a
+    // background network call and — when the provider replied with an HTML
+    // error page — a red notification the user had never asked for. The
+    // room migration in v1.0.57 already zeroed that flag on all playlists,
+    // so keeping the init call was pure dead weight. Removed entirely.
 
     var code by mutableStateOf("")
     var isConnectSheetVisible by mutableStateOf(false)
@@ -88,7 +81,6 @@ class AppViewModel @Inject constructor(
     private val timber = Timber.tag("RemoteControlVM")
 
     init {
-        refreshProgrammes()
         tvRepository.connected
             .onEach {
                 timber.d("connected tv changed: $it")

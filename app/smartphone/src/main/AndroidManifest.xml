@@ -93,16 +93,11 @@
                 android:resource="@xml/filepaths" />
         </provider>
 
-        <receiver
-            android:name=".glance.GlanceReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/widget_info" />
-        </receiver>
+        <!-- Widget removed in v1.0.68: nobody was actually using it (dumpsys
+             appwidget on the user's device reported 0 hosted instances) and
+             its background lifecycle was adding noise. Kept manifest space
+             tidy by dropping the receiver, receiver's intent-filter and the
+             widget provider metadata entirely. -->
 
         <profileable
             android:shell="true"
