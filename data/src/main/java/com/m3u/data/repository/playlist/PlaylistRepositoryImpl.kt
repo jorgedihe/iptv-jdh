@@ -245,6 +245,13 @@ internal class PlaylistRepositoryImpl @Inject constructor(
                     channelDao.deleteByPlaylistUrlIgnoreFavOrHidden(livePlaylist.url)
                 }
             }
+            // BUG FIX: the Live playlist row was NEVER persisted (only VOD and
+            // Series were `insertOrReplace`d below). Channels were still written
+            // with playlistUrl = livePlaylist.url, but with no matching row in
+            // the playlists table the Live tab in "Para Ti" appeared empty
+            // even though the download had actually completed. VOD/Series
+            // worked because they DID insert their row. Symmetry restored.
+            playlistDao.insertOrReplace(livePlaylist)
             // EPG download triggered once on first subscribe so the user gets
             // the guide right away without waiting. We intentionally do NOT
             // set autoRefreshProgrammes=true here — it caused the EPG to be

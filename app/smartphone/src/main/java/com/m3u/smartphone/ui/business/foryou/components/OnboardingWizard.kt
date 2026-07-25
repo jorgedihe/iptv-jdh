@@ -20,12 +20,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
-import androidx.compose.material.icons.rounded.Cloud
-import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -51,11 +52,10 @@ import androidx.compose.ui.unit.sp
 import com.m3u.smartphone.R
 
 /**
- * Two-step welcome wizard that replaces the previous "empty playlists"
- * placeholder. Step 1: brand splash with logo + claim. Step 2: three big
- * source cards (Xtream / M3U URL / free iptv-org). All three CTAs route to
- * the existing playlist-management screen so the actual add-list UX stays
- * unchanged; the wizard's job is to give first-time users orientation.
+ * Two-step welcome wizard. Step 1: brand splash. Step 2: TWO source cards —
+ * "my own list" (Xtream or M3U URL, both land on the same Add-List screen
+ * with its own M3U/Xtream toggle) and "free starter list". The wizard's job
+ * is orientation, not to duplicate the picker that already exists downstream.
  */
 @Composable
 internal fun OnboardingWizard(
@@ -171,6 +171,7 @@ private fun Step2PickSource(onPick: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 32.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -187,17 +188,10 @@ private fun Step2PickSource(onPick: () -> Unit) {
             modifier = Modifier.padding(bottom = 12.dp)
         )
         SourceCard(
-            icon = Icons.Rounded.Cloud,
-            title = "Tengo un servidor Xtream",
-            description = "Usuario, contraseña y URL — el formato típico de los proveedores IPTV de pago.",
+            icon = Icons.Rounded.PlaylistAdd,
+            title = "Tengo mi propia lista",
+            description = "Servidor Xtream (usuario + contraseña) o enlace .m3u/.m3u8. En la siguiente pantalla eliges el tipo.",
             tint = MaterialTheme.colorScheme.primary,
-            onClick = onPick
-        )
-        SourceCard(
-            icon = Icons.Rounded.Description,
-            title = "Tengo una URL .m3u",
-            description = "Un enlace o archivo .m3u/.m3u8 con la lista de canales.",
-            tint = MaterialTheme.colorScheme.tertiary,
             onClick = onPick
         )
         SourceCard(
