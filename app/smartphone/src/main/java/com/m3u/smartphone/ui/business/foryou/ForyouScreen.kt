@@ -25,7 +25,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.automirrored.rounded.ViewList
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.GridView
@@ -49,6 +48,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -63,6 +63,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -329,6 +330,13 @@ private fun ForyouScreen(
     var viewModePref by mutablePreferenceOf(PreferencesKeys.HOME_VIEW_MODE)
     val viewMode = ViewMode.fromInt(viewModePref)
 
+    // Which categories are open, and which of those are showing every channel
+    // instead of just the preview. Hoisted out of the row composables because
+    // the rows are emitted straight into the LazyColumn and get recycled.
+    // Keyed on the tab so switching PELÍCULAS/SERIES/LIVE starts collapsed.
+    val expandedCategories = remember(selectedTabIndex) { mutableStateMapOf<String, Boolean>() }
+    val fullyExpandedCategories = remember(selectedTabIndex) { mutableStateMapOf<String, Boolean>() }
+
     // Build the tab strip dynamically: only show PELÍCULAS / SERIES when the
     // active provider actually has those sub-playlists (Xtream has all three;
     // a plain M3U provider has only Live, so showing the other two empty
@@ -466,28 +474,82 @@ private fun ForyouScreen(
                         modifier = Modifier.fillMaxWidth().padding(16.dp)
                     )
                 }
+            } else if (viewMode == ViewMode.TEXT_ONLY) {
+                // "Ver todos" expands the category right here instead of jumping
+                // to the playlist screen, which draws a completely different
+                // layout (staggered grid of big cards) and broke the continuity.
+                //
+                // The rows are emitted straight into this LazyColumn rather than
+                // stuffed into a Column inside a single item, so a category with
+                // thousands of entries still composes only what is on screen.
+                sections.forEach { section ->
+                    val expanded = expandedCategories[section.name] == true
+                    val showingAll = fullyExpandedCategories[section.name] == true
+                    val hasMore = section.totalCount > section.previewChannels.size
+                    val channels = when {
+                        !expanded -> emptyList()
+                        showingAll -> section.channels
+                        else -> section.previewChannels
+                    }
+                    // Only the bottom-most row of a category gets rounded corners,
+                    // so the separate items still read as one card.
+                    val hasActionRow = expanded && hasMore
+                    val lastChannelId = channels.lastOrNull()?.id
+
+                    item(key = "category:${section.name}") {
+                        CategoryHeaderRow(
+                            section = section,
+                            expanded = expanded,
+                            isLast = !expanded,
+                            onClick = {
+                                if (expanded) {
+                                    expandedCategories.remove(section.name)
+                                    fullyExpandedCategories.remove(section.name)
+                                } else {
+                                    expandedCategories[section.name] = true
+                                }
+                            }
+                        )
+                    }
+                    items(
+                        items = channels,
+                        key = { "category:${section.name}:${it.id}" }
+                    ) { channel ->
+                        CategoryChannelRow(
+                            channel = channel,
+                            isLast = !hasActionRow && channel.id == lastChannelId,
+                            onClick = { onPlayChannel(channel) }
+                        )
+                    }
+                    if (hasActionRow) {
+                        item(key = "category:${section.name}:action") {
+                            CategoryActionRow(
+                                text = if (showingAll) "Ver menos"
+                                else "Ver todos (${section.totalCount})",
+                                icon = if (showingAll) Icons.Rounded.ExpandLess
+                                else Icons.Rounded.ExpandMore,
+                                onClick = {
+                                    if (showingAll) fullyExpandedCategories.remove(section.name)
+                                    else fullyExpandedCategories[section.name] = true
+                                }
+                            )
+                        }
+                    }
+                }
             } else {
                 items(
                     items = sections,
                     key = { it.name }
                 ) { section ->
-                    if (viewMode == ViewMode.TEXT_ONLY) {
-                        CollapsibleCategorySection(
-                            section = section,
-                            onPlayChannel = onPlayChannel,
-                            onMoreClick = { activePlaylist?.let { navigateToPlaylistCategory(it, section.name) } }
-                        )
-                    } else {
-                        CategorySectionRow(
-                            section = section,
-                            isVodOrSeries = isVodOrSeries,
-                            viewMode = viewMode,
-                            onPlayChannel = onPlayChannel,
-                            onMoreClick = {
-                                activePlaylist?.let { navigateToPlaylistCategory(it, section.name) }
-                            }
-                        )
-                    }
+                    CategorySectionRow(
+                        section = section,
+                        isVodOrSeries = isVodOrSeries,
+                        viewMode = viewMode,
+                        onPlayChannel = onPlayChannel,
+                        onMoreClick = {
+                            activePlaylist?.let { navigateToPlaylistCategory(it, section.name) }
+                        }
+                    )
                 }
             }
         }
@@ -800,96 +862,125 @@ private fun TextOnlyChip(channel: Channel, onClick: () -> Unit) {
     }
 }
 
+/**
+ * Card background shared by every row of one category. The rows live as
+ * separate LazyColumn items, so each one paints its own slice and only the
+ * first/last round their corners — together they read as a single card.
+ */
 @Composable
-private fun CollapsibleCategorySection(
+private fun Modifier.categoryCard(isFirst: Boolean, isLast: Boolean): Modifier = this
+    .padding(
+        start = 12.dp,
+        end = 12.dp,
+        top = if (isFirst) 2.dp else 0.dp,
+        bottom = if (isLast) 2.dp else 0.dp
+    )
+    .clip(
+        RoundedCornerShape(
+            topStart = if (isFirst) 12.dp else 0.dp,
+            topEnd = if (isFirst) 12.dp else 0.dp,
+            bottomStart = if (isLast) 12.dp else 0.dp,
+            bottomEnd = if (isLast) 12.dp else 0.dp
+        )
+    )
+    .background(MaterialTheme.colorScheme.surface)
+
+@Composable
+private fun CategoryHeaderRow(
     section: CategorySection,
-    onPlayChannel: (Channel) -> Unit,
-    onMoreClick: () -> Unit
+    expanded: Boolean,
+    isLast: Boolean,
+    onClick: () -> Unit
 ) {
-    var expanded by remember(section.name) { mutableStateOf(false) }
-    Column(
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 2.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surface)
+            .categoryCard(isFirst = true, isLast = isLast)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        Text(
+            text = section.name.uppercase(),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = section.totalCount.toString(),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(end = 8.dp)
+        )
+        Icon(
+            imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun CategoryChannelRow(
+    channel: Channel,
+    isLast: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .categoryCard(isFirst = false, isLast = isLast)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .clickable { expanded = !expanded }
-                .padding(horizontal = 14.dp, vertical = 12.dp)
-        ) {
-            Text(
-                text = section.name.uppercase(),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = section.totalCount.toString(),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(end = 8.dp)
-            )
-            Icon(
-                imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        if (expanded) {
-            section.previewChannels.forEach { ch ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onPlayChannel(ch) }
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(MaterialTheme.colorScheme.primary)
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = ch.title.trim(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-            if (section.totalCount > section.previewChannels.size) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onMoreClick)
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    Text(
-                        text = "Ver todos (${section.totalCount})",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Icon(
-                        imageVector = Icons.Rounded.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-        }
+                .size(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(MaterialTheme.colorScheme.primary)
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = channel.title.trim(),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+/** The "Ver todos (47)" / "Ver menos" row that closes an expanded category. */
+@Composable
+private fun CategoryActionRow(
+    text: String,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .categoryCard(isFirst = false, isLast = true)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f)
+        )
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary
+        )
     }
 }
 

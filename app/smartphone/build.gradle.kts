@@ -52,6 +52,12 @@ android {
                 ?: signingConfigs.getByName("debug")
         }
         debug {
+            // Debug builds carry their own applicationId so a test build can sit
+            // next to the installed release app instead of having to replace it
+            // (which is impossible anyway once the signatures differ, and would
+            // wipe the configured playlists). Both manifest providers already
+            // derive their authority from ${'$'}{applicationId}, so nothing clashes.
+            applicationIdSuffix = ".debug"
             isMinifyEnabled = false
             isShrinkResources = false
             signingConfig = signingConfigs.getByName("debug")

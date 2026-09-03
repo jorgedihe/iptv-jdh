@@ -178,7 +178,8 @@ class ForyouViewModel @Inject constructor(
                             name = name,
                             totalCount = list.size,
                             previewChannels = list.take(12),
-                            playlistUrl = url
+                            playlistUrl = url,
+                            channels = list
                         )
                     }
                     // Order categories by language affinity: device locale first,

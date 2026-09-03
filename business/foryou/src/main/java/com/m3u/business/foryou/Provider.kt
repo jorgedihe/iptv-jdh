@@ -31,5 +31,10 @@ data class CategorySection(
     val name: String,
     val totalCount: Int,
     val previewChannels: List<Channel>,
-    val playlistUrl: String
+    val playlistUrl: String,
+    /**
+     * Every channel of the category. The home expands a category in place, so
+     * it needs the whole list, not just [previewChannels].
+     */
+    val channels: List<Channel>
 )
