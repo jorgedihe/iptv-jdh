@@ -1,0 +1,7 @@
+Capítulo «menos Cargando, más vídeo»
+
+• Buffer XXL: ahora guarda hasta 4 minutos de imagen para aguantar el WiFi en sus días tontos.
+• Si tiene que rebufferar, vuelve en 3 segundos en vez de en 10. Menos drama.
+• Los micro-cargandos de medio segundo desaparecen: solo aparece el aviso si tarda en serio.
+• Más paciencia con la red doméstica: hasta 30 segundos esperando antes de rendirse.
+• La Sexta HD, ya sin sustos en los días buenos.

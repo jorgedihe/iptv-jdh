@@ -1,4 +1,5 @@
 [versions]
+gradle-play-publisher = "3.9.1"
 androidx-core = "1.17.0"
 androidx-core-splashscreen = "1.2.0"
 androidx-appcompat = "1.7.1"
@@ -192,6 +193,7 @@ timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "tim
 wire-runtime = { module = "com.squareup.wire:wire-runtime", version.ref = "squareup-wire" }
 
 [plugins]
+com-github-triplet-play = { id = "com.github.triplet.play", version.ref = "gradle-play-publisher" }
 com-android-application = { id = "com.android.application", version.ref = "android-gradle-plugin" }
 com-android-library = { id = "com.android.library", version.ref = "android-gradle-plugin" }
 com-android-test = { id = "com.android.test", version.ref = "android-gradle-plugin" }

@@ -1,0 +1,42 @@
+IPTV JDH es un reproductor multimedia personal para Android que conecta con tu propio servidor IPTV. Tú aportas tus credenciales, la aplicación se encarga del resto: organizar el catálogo, reproducir, y mostrar la guía de programación.
+
+▸ FORMATOS COMPATIBLES
+• Xtream Codes API (URL del servidor + usuario + contraseña)
+• Listas M3U y M3U8
+• EPG en formato XMLTV
+
+▸ CATÁLOGO ORGANIZADO
+• Canales en directo (Live TV) por categorías
+• Películas (VOD) con caratulas, sinopsis y rating
+• Series con temporadas y episodios
+• Favoritos y "Seguir viendo" para acceso rápido
+• Múltiples vistas: compacta, cómoda, grande y solo texto
+
+▸ REPRODUCTOR PROFESIONAL
+• Basado en Media3 / ExoPlayer (el mismo motor que YouTube)
+• Zapping rápido entre canales
+• Pantalla dividida con video arriba y EPG abajo
+• Gestos para volumen y brillo
+• Modo PiP, casting DLNA
+
+▸ GUÍA EPG (XMLTV)
+• Descarga automática desde tu proveedor
+• Vista por canal con programa actual y siguientes
+• Programa "en directo" destacado con borde y barra de progreso
+
+▸ MÚLTIPLES PROVEEDORES
+• Añade más de un proveedor Xtream
+• Selector rápido para cambiar entre ellos
+• Cada proveedor agrupa sus catálogos Live + Películas + Series
+
+▸ PRIVACIDAD
+• Sin telemetría
+• Sin SDKs de analítica ni anuncios
+• Tus credenciales y catálogos se guardan únicamente en tu dispositivo
+• Código fuente abierto bajo licencia GPL-3.0
+
+▸ IMPORTANTE
+IPTV JDH es un reproductor agnóstico. La aplicación no incluye ni proporciona contenido: necesitas tu propio servicio IPTV (Xtream Codes o lista M3U) para utilizarla. La legalidad y disponibilidad del contenido depende exclusivamente de tu proveedor.
+
+▸ CÓDIGO ABIERTO
+github.com/jorgedihe/iptv

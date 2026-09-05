@@ -1,0 +1,1 @@
+Reproductor IPTV personal para Android. Compatible con M3U y Xtream Codes.

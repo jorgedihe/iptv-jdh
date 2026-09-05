@@ -15,6 +15,7 @@ plugins {
     alias(libs.plugins.org.jetbrains.kotlin.jvm) apply false
     alias(libs.plugins.androidx.baselineprofile) apply false
     alias(libs.plugins.com.squareup.wire) apply false
+    alias(libs.plugins.com.github.triplet.play) apply false
 }
 subprojects {
     tasks.withType<KotlinCompile>().configureEach {

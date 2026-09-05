@@ -1,3 +1,4 @@
+import com.github.triplet.gradle.androidpublisher.ReleaseStatus
 import java.util.Properties
 
 plugins {
@@ -9,6 +10,7 @@ plugins {
     alias(libs.plugins.androidx.baselineprofile)
     id("kotlin-parcelize")
     id("dev.oxyroid.native-load")
+    alias(libs.plugins.com.github.triplet.play)
 }
 
 val m3uMockServerUrl = providers.gradleProperty("m3uMockServerUrl").orElse("http://10.0.2.2:8080")
@@ -232,4 +234,28 @@ dependencies {
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.test.runner)
+}
+
+// Publicación en Google Play desde la terminal (Gradle Play Publisher).
+//
+//   ./gradlew :app:smartphone:publishReleaseBundle
+//
+// Sube el AAB firmado a producción y lo envía a revisión, sin pasar por el
+// navegador (que corta las subidas en 10 MB y no puede con un AAB de 18).
+//
+// Las notas de versión salen de:
+//   src/main/play/release-notes/es-ES/production.txt
+// Actualízalas ANTES de publicar: son las que ve el usuario en la ficha.
+play {
+    // La clave de la cuenta de servicio no está versionada (ver .gitignore).
+    // Sin ella el plugin se desactiva, para que un clon del repo siga compilando.
+    val serviceAccount = rootProject.file("play-publisher.json")
+    if (serviceAccount.exists()) {
+        serviceAccountCredentials.set(serviceAccount)
+    } else {
+        enabled.set(false)
+    }
+    track.set("production")
+    releaseStatus.set(ReleaseStatus.COMPLETED)
+    defaultToAppBundles.set(true)
 }

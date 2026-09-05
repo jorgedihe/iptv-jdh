@@ -1,0 +1,5 @@
+1.0.73 – «Ver todos» ya no te manda a otro barrio
+
+Abrías una categoría, pulsabas «Ver todos» y aparecías en una pantalla con otra cara: tarjetones enormes, nombres cortados por la mitad y esa sensación de haber salido de la app sin querer. Ahora la categoría se despliega ahí mismo, con la pinta de siempre.
+
+De regalo, un «Ver menos» para plegarla cuando ya has visto lo que buscabas. Sin volver atrás ni perder el sitio.

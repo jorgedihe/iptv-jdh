@@ -1,0 +1,8 @@
+🎉 Primera versión pública
+
+• Tu IPTV en limpio: sin anuncios, sin tracking, sin chorradas.
+• Listas M3U, cuentas Xtream y canales gratuitos de iptv-org.
+• Pelis y series con fichas TMDB y «Continuar viendo».
+• Compartir a la TV por DLNA.
+
+Tú traes la lista, yo el reproductor. Disfruta.

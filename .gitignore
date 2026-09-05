@@ -25,3 +25,7 @@ __pycache__/
 testing/mock-server/bin/
 keystore.properties
 /keystore/
+
+# Clave de la cuenta de servicio de Play (NUNCA se sube)
+play-publisher.json
+*-service-account*.json
