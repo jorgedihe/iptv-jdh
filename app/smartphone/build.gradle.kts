@@ -246,6 +246,12 @@ dependencies {
 // Las notas de versión salen de:
 //   src/main/play/release-notes/es-ES/production.txt
 // Actualízalas ANTES de publicar: son las que ve el usuario en la ficha.
+//
+// CUIDADO con src/main/play/listings/: son título, descripciones, icono y
+// capturas de la ficha, descargados de Play. publishReleaseBundle NO los toca,
+// solo sube el AAB y las notas. Pero publishApps y publishReleaseListing SÍ los
+// escriben en Play, así que si alguien edita la ficha desde la consola web,
+// esos ficheros se quedan viejos y una de esas dos tareas la pisaría.
 play {
     // La clave de la cuenta de servicio no está versionada (ver .gitignore).
     // Sin ella el plugin se desactiva, para que un clon del repo siga compilando.
